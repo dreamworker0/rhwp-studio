@@ -1,0 +1,23 @@
+{
+  "name": "rhwp-studio",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "build:editor": "cd temp_editor/rhwp-studio && npm run build && cd ../.. && node scripts/post-build.js",
+    "post-build": "node scripts/post-build.js",
+    "upstream:update": "node scripts/upstream-update.js"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "vite": "^5.2.0",
+    "vite-plugin-mkcert": "^2.0.0"
+  },
+  "dependencies": {
+    "@rhwp/core": "^0.7.3",
+    "@rhwp/editor": "^0.7.3"
+  }
+}

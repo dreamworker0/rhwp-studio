@@ -1,0 +1,25 @@
+# 의존성
+node_modules/
+
+# 빌드 결과물
+dist/
+.firebase/
+
+# 환경변수 (민감 정보)
+.env
+.env.*
+!.env.example
+
+# 에디터 서브모듈 (upstream clone - 별도 git repo)
+temp_editor/
+
+# 로그
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Vite cache
+.vite/

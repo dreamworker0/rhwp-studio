@@ -14,7 +14,11 @@ export interface DriveFileMeta {
 }
 
 function authHeaders(): HeadersInit {
-  return { Authorization: `Bearer ${getToken()}` }
+  const token = getToken()
+  if (!token) {
+    throw new Error('인증 토큰이 없습니다. 다시 로그인해주세요.')
+  }
+  return { Authorization: `Bearer ${token}` }
 }
 
 export async function getFileMeta(fileId: string): Promise<DriveFileMeta> {
@@ -62,7 +66,11 @@ export async function uploadFile(
   fileId?: string,
 ): Promise<string> {
   // ArrayBuffer 또는 Uint8Array 둘 다 허용
-  const buffer = data instanceof Uint8Array ? data.buffer : data
+  // Uint8Array.slice()로 생성된 경우 .buffer가 원본 전체를 참조할 수 있으므로
+  // byteOffset/byteLength 기준으로 정확한 범위만 추출
+  const buffer = data instanceof Uint8Array
+    ? data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)
+    : data
 
   const meta = { name, mimeType }
   const form = new FormData()

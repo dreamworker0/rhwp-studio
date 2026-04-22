@@ -74,7 +74,12 @@ export async function requestAuth(): Promise<string> {
 
   return new Promise((resolve, reject) => {
     if (!tokenClientInstance) {
-      tokenClientInstance = window.google!.accounts.oauth2.initTokenClient({
+      const gis = window.google?.accounts?.oauth2
+      if (!gis) {
+        reject(new Error('Google Identity Services를 로드할 수 없습니다.'))
+        return
+      }
+      tokenClientInstance = gis.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPE,
         callback: (response) => {

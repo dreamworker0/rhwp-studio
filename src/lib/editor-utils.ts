@@ -1,0 +1,144 @@
+import { uploadFile } from './drive'
+
+const HWPX_TOAST_KEY = 'rhwp_hwpx_toast_dismissed'
+
+// ─── hwpx 토스트 (localStorage 기반 다시보지않기) ────────────────────────
+export function showHwpxToastIfNeeded(): void {
+  if (localStorage.getItem(HWPX_TOAST_KEY)) return
+
+  const toast = document.getElementById('hwpx-toast')
+  if (!toast) return
+  toast.style.display = 'block'
+  toast.style.opacity = '1'
+
+  const dismissToast = () => {
+    toast.style.opacity = '0'
+    setTimeout(() => { toast.style.display = 'none' }, 400)
+  }
+
+  document.getElementById('hwpx-toast-close')?.addEventListener('click', () => {
+    localStorage.setItem(HWPX_TOAST_KEY, '1')
+    dismissToast()
+  })
+
+  setTimeout(() => {
+    dismissToast()
+  }, 3000)
+}
+
+// ─── Drive 저장 메시지 리스너 (hwp 전용) ─────────────────────────────────
+export function setupSaveListener(
+  metaName: string,
+  metaMimeType: string,
+  fileId: string,
+  statusText: HTMLElement | null,
+): () => void {
+  const handler = async (e: MessageEvent) => {
+    if (e.origin !== location.origin) return
+
+    const msg = e.data
+    if (!msg || typeof msg !== 'object') return
+    if (msg.type === 'rhwp-response' || msg.type === 'rhwp-request') return
+    if (msg.type !== 'save' && msg.type !== 'rhwp-save' && msg.action !== 'save') return
+
+    console.log('[DriveOpen] 저장 메시지 수신:', msg)
+    const payload = msg.data || {}
+    const fileBuffer: ArrayBuffer | Uint8Array | null =
+      payload.buffer instanceof ArrayBuffer ? payload.buffer :
+      payload.file instanceof ArrayBuffer   ? payload.file   :
+      payload instanceof ArrayBuffer        ? payload        :
+      null
+
+    const saveName: string = payload.filename || payload.name || metaName
+    const saveMime: string = payload.mimeType || metaMimeType || 'application/x-hwp'
+
+    if (!fileBuffer) {
+      console.warn('[DriveOpen] 저장 메시지에 buffer가 없습니다:', payload)
+      return
+    }
+
+    try {
+      if (statusText) statusText.textContent = '■ 드라이브에 저장 중...'
+      console.log(`[DriveOpen] Google Drive 업로드: ${saveName} (${(fileBuffer as ArrayBuffer).byteLength ?? '?'} bytes)`)
+      await uploadFile(saveName, fileBuffer, saveMime, fileId)
+      if (statusText) {
+        statusText.textContent = '✔ 드라이브 저장 완료'
+        setTimeout(() => { if (statusText.textContent?.includes('저장 완료')) statusText.textContent = '' }, 3000)
+      }
+      console.log('[DriveOpen] Google Drive 저장 성공')
+    } catch (err) {
+      console.error('[DriveOpen] Google 드라이브 저장 실패:', err)
+      alert('구글 드라이브 업로드에 실패했습니다.')
+      if (statusText) statusText.textContent = '❌ 저장 실패'
+    }
+  }
+
+  window.addEventListener('message', handler)
+  return () => window.removeEventListener('message', handler)
+}
+
+/**
+ * @rhwp/editor의 loadFile 메서드를 우회하여 iframe에 직접 postMessage로 파일을 전송합니다.
+ */
+export async function loadFileDirectly(
+  iframe: HTMLIFrameElement,
+  data: ArrayBuffer,
+  fileName: string,
+  statusEl: HTMLElement | null,
+): Promise<void> {
+  const TIMEOUT_MS = 60_000
+  const MAX_RETRIES = 5
+  const RETRY_DELAY_MS = 2_000
+  const bytes = new Uint8Array(data)
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const msgId = Date.now() + Math.random()
+
+        const timer = setTimeout(() => {
+          window.removeEventListener('message', handler)
+          reject(new Error(`loadFile timeout (${TIMEOUT_MS / 1000}s)`))
+        }, TIMEOUT_MS)
+
+        function handler(e: MessageEvent) {
+          if (e.origin !== location.origin) return
+          const d = e.data
+          if (d?.type === 'rhwp-response' && d.id === msgId) {
+            clearTimeout(timer)
+            window.removeEventListener('message', handler)
+            if (d.error) {
+              reject(new Error(d.error))
+            } else {
+              resolve()
+            }
+          }
+        }
+
+        window.addEventListener('message', handler)
+        iframe.contentWindow!.postMessage(
+          { type: 'rhwp-request', id: msgId, method: 'loadFile', params: { data: bytes, fileName } },
+          location.origin,
+        )
+      })
+
+      if (statusEl) statusEl.textContent = ''
+      console.log('[DriveOpen] 파일 로드 성공')
+      return
+
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err)
+
+      if (errMsg.includes('wbindgen') || errMsg.includes('undefined') || errMsg.includes('not initialized')) {
+        console.warn(`[DriveOpen] WASM 초기화 대기 중... (${attempt + 1}/${MAX_RETRIES})`)
+        if (statusEl) statusEl.textContent = `에디터 초기화 대기 중... (${attempt + 1}/${MAX_RETRIES})`
+        await new Promise(r => setTimeout(r, RETRY_DELAY_MS))
+        continue
+      }
+
+      throw err
+    }
+  }
+
+  throw new Error('WASM 초기화 시간 초과 — 에디터를 로드할 수 없습니다.')
+}

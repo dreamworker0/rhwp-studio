@@ -1,4 +1,10 @@
 
+function escapeHtml(str: string): string {
+  const div = document.createElement('div')
+  div.textContent = str
+  return div.innerHTML
+}
+
 export async function renderDriveNew(app: HTMLElement) {
   app.innerHTML = `
     <div class="editor-layout">
@@ -11,20 +17,17 @@ export async function renderDriveNew(app: HTMLElement) {
   `
 
   const btnBack = document.getElementById('btn-back')
-  btnBack?.addEventListener('click', () => { window.location.hash = '' })
+  btnBack?.addEventListener('click', () => { history.back() })
 
   const container = document.getElementById('editor-container')
   if (!container) return
 
   try {
     const { createEditor } = await import('@rhwp/editor');
-    const editor = await createEditor(container, { studioUrl: '/editor/index.html' });
-    
-    // 에디터 로드 대기
-    await new Promise(r => setTimeout(r, 2000));
+    await createEditor(container, { studioUrl: '/editor/index.html' });
 
   } catch (e: unknown) {
     console.error('Editor Error', e)
-    container.innerHTML = `<div style="padding: 2rem; color: red;">뷰어 엔진을 불러오지 못했습니다: ${String(e)}</div>`
+    container.innerHTML = `<div style="padding: 2rem; color: red;">뷰어 엔진을 불러오지 못했습니다: ${escapeHtml(String(e))}</div>`
   }
 }

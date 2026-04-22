@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "build:editor": "cd temp_editor/rhwp-studio && npm run build && cd ../.. && node scripts/post-build.js",
+    "build:editor": "node scripts/upstream-update.js",
     "post-build": "node scripts/post-build.js",
     "upstream:update": "node scripts/upstream-update.js"
   },

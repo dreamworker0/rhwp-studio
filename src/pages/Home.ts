@@ -3,7 +3,7 @@ export function renderHome(app: HTMLElement) {
     <div class="home-screen">
       <header class="home-header">
         <div class="home-brand">
-          <span class="logo-badge">알</span>
+          <span class="logo-badge">ㅎ</span>
           <span class="logo-name">rhwp Studio</span>
         </div>
       </header>

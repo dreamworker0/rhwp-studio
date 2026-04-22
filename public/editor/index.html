@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
@@ -7,9 +7,10 @@
   <title>rhwp-studio</title>
   <!-- Google Identity Services (Drive 연동) -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script type="module" crossorigin src="./assets/index-C2r153_Y.js"></script>
+  <script type="module" crossorigin src="./assets/index-WSTj7iXo.js"></script>
   <link rel="stylesheet" crossorigin href="./assets/index-UDoTzSr4.css">
-  <!-- 미리보기 모드(?mode=view): 편집 UI 숨김 -->
+
+  <!-- [custom] 미리보기 모드(?mode=view): 편집 UI 숨김 -->
   <script>
     if (new URLSearchParams(location.search).get('mode') === 'view') {
       var s = document.createElement('style');
@@ -382,12 +383,6 @@
         <div class="menu-dropdown">
           <div class="md-item" data-cmd="tool:options"><span class="md-icon"></span><span class="md-label">환경 설정</span></div>
         </div>
-      </div>
-      <!-- 우측 다운로드 버튼 -->
-      <div style="margin-left: auto; display: flex; align-items: center; padding-right: 16px;">
-        <button class="tb-btn" data-cmd="file:download" title="로컬에 다운로드" style="border: 1px solid #cdd1d5; border-radius: 4px; padding: 4px 12px; background: #fdfdfd; cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 13px; color: #333; font-weight: 500;">
-          <span class="tb-sprite icon-save" style="margin: 0; transform: scale(0.85);"></span>다운로드
-        </button>
       </div>
     </div>
 

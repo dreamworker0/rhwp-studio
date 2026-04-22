@@ -4,7 +4,7 @@
  */
 
 // @rhwp/core를 static import로 가져와 단일 모듈 인스턴스 보장
-import init, { initSync, HwpDocument } from '@rhwp/core';
+import init, { HwpDocument } from '@rhwp/core';
 
 // WASM 초기화 여부
 let wasmReady = false;
@@ -38,7 +38,7 @@ function registerMeasureTextWidth() {
 
 /**
  * WASM 초기화
- * public/rhwp_bg.wasm 파일을 fetch하여 로드한다.
+ * public/rhwp_bg.wasm 파일을 비동기 스트리밍 컴파일(instantiateStreaming)로 로드한다.
  * 동시 호출 방지를 위해 Promise를 캐싱한다.
  */
 export async function initWasm(): Promise<void> {
@@ -50,23 +50,11 @@ export async function initWasm(): Promise<void> {
       // measureTextWidth 콜백을 먼저 등록해야 WASM import가 성공함
       registerMeasureTextWidth();
 
-      // WASM 바이너리를 직접 fetch
-      console.log('[hwp-renderer] Fetching WASM binary...');
+      console.log('[hwp-renderer] Initializing WASM asynchronously...');
       const wasmUrl = '/rhwp_bg.wasm';
-      const response = await fetch(wasmUrl);
-
-      if (!response.ok) {
-        throw new Error(`WASM fetch failed: ${response.status} ${response.statusText}`);
-      }
-
-      const contentType = response.headers.get('content-type');
-      console.log(`[hwp-renderer] WASM Content-Type: ${contentType}`);
-
-      // ArrayBuffer로 변환 후 initSync로 동기 초기화
-      const wasmBytes = await response.arrayBuffer();
-      console.log(`[hwp-renderer] WASM size: ${wasmBytes.byteLength} bytes`);
-
-      initSync({ module: wasmBytes });
+      
+      // init() 기본 함수는 fetch(wasmUrl) 후 instantiateStreaming을 통해 비동기 컴파일을 수행함
+      await init(wasmUrl);
 
       console.log('[hwp-renderer] WASM initialized successfully');
       wasmReady = true;

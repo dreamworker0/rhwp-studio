@@ -15,8 +15,8 @@ export function renderEditorLayout(name: string, isHwpx: boolean): string {
           ${isHwpx ? '<span class="editor-status" style="margin-left:8px; background:#ffc107; color:#212529;">미리보기</span>' : ''}
         </div>
         <div class="editor-actions">
-          <span id="save-status" style="font-size:13px; color:var(--text-muted);"></span>
-          <button id="btn-download" class="btn btn-primary" style="background-color: #0d6efd; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: bold;">다운로드</button>
+          <span id="save-status" style="font-size:14px; font-weight:bold; color:#4ade80; margin-right:15px; transition: opacity 0.3s;"></span>
+          ${isHwpx ? '<button id="btn-download" class="btn btn-primary" style="background-color: #0d6efd; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: bold;">다운로드</button>' : ''}
         </div>
       </header>
       <div id="editor-container" class="editor-main"></div>

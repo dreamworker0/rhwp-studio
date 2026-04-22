@@ -52,6 +52,11 @@ export function renderHome(app: HTMLElement) {
 
       <footer class="home-footer">
         <p>© 2026 rhwp Studio · <a href="https://github.com/edwardkim/rhwp" target="_blank">GitHub</a></p>
+        <p style="margin-top: 8px; font-size: 0.9em; color: #6b7280;">
+          <a href="/terms.html" target="_blank" style="color: inherit; text-decoration: underline;">서비스 약관</a> &nbsp;|&nbsp; 
+          <a href="/privacy.html" target="_blank" style="color: inherit; text-decoration: underline;">개인정보처리방침</a> &nbsp;|&nbsp; 
+          <a href="/support.html" target="_blank" style="color: inherit; text-decoration: underline;">고객 지원</a>
+        </p>
       </footer>
     </div>
   `

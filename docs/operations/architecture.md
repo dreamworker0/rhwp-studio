@@ -72,7 +72,7 @@ Drive 파일 로드 후 → startAutoSave(wasm, eventBus)
 | 항목 | 값 |
 |------|-----|
 | Client ID | `292079787292-qmjcruc73ogvoffnf63f28nj7ov30csn.apps.googleusercontent.com` |
-| Scope | `https://www.googleapis.com/auth/drive` |
+| Scope | `https://www.googleapis.com/auth/drive.file` + `https://www.googleapis.com/auth/drive.install` |
 | Flow | Implicit (GIS `initTokenClient`) |
 | 토큰 저장 | `sessionStorage` (`rhwp_drive_token`, `rhwp_drive_token_expiry`) |
 | 만료 갱신 | 5분 전 자동 (`TOKEN_REFRESH_BUFFER_MS`) |

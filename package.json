@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "build:editor": "node scripts/upstream-update.js",
     "post-build": "node scripts/post-build.js",
+    "upstream:check": "node scripts/upstream-check.js",
     "upstream:update": "node scripts/upstream-update.js"
   },
   "devDependencies": {

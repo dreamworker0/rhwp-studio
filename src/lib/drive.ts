@@ -11,6 +11,7 @@ export interface DriveFileMeta {
   name: string
   mimeType: string
   size?: string
+  capabilities?: { canEdit: boolean }
 }
 
 function authHeaders(): HeadersInit {
@@ -23,7 +24,7 @@ function authHeaders(): HeadersInit {
 
 export async function getFileMeta(fileId: string): Promise<DriveFileMeta> {
   const res = await fetch(
-    `${DRIVE_API}/files/${fileId}?fields=id,name,mimeType,size&supportsAllDrives=true`,
+    `${DRIVE_API}/files/${fileId}?fields=id,name,mimeType,size,capabilities&supportsAllDrives=true`,
     { headers: authHeaders() },
   )
   if (!res.ok) {

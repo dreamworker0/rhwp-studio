@@ -378,7 +378,7 @@ Drive 파일 로드 ──→ startAutoSave()
 |------|-----|
 | 인증 방식 | Google Identity Services (Implicit Flow) |
 | Client ID | `292079787292-qmjcruc73ogvoffnf63f28nj7ov30csn` |
-| Scope | `https://www.googleapis.com/auth/drive` (전체 Drive 접근) |
+| Scope | `https://www.googleapis.com/auth/drive.file` (열린 파일만) + `https://www.googleapis.com/auth/drive.install` (Drive "연결 앱" 통합) |
 | 토큰 타입 | Access Token (Bearer) |
 | 유효 기간 | 1시간 (3600초) |
 | 저장 위치 | `sessionStorage` |

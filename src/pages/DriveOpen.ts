@@ -1,28 +1,43 @@
-import { getToken, requestAuth } from '../lib/auth'
+import { getToken, requestAuth, clearToken } from '../lib/auth'
 import { getFileMeta, downloadFile, uploadFile } from '../lib/drive'
 import { renderEditorLayout, renderAuthPrompt, renderLoading, renderError } from '../components/ui'
-import { showHwpxToastIfNeeded, setupSaveListener, loadFileDirectly } from '../lib/editor-utils'
+import { showHwpxToastIfNeeded, showViewerPermToast, setupSaveListener, loadFileDirectly } from '../lib/editor-utils'
 
 export async function renderDriveOpen(app: HTMLElement) {
   const params = new URLSearchParams(location.search)
-  const fileIds = params.get('fileId')?.split(',')
-  const fileId = fileIds?.[0]?.trim()
+
+  // Google Workspace Marketplace: ?state={"ids":["..."],"action":"open"}
+  // 자체 앱 링크: ?fileId=...
+  let fileId: string | undefined
+  const stateParam = params.get('state')
+  if (stateParam) {
+    try {
+      const state = JSON.parse(stateParam)
+      fileId = Array.isArray(state.ids) ? state.ids[0] : undefined
+    } catch {
+      // state 파싱 실패 시 무시
+    }
+  }
+  if (!fileId) {
+    fileId = params.get('fileId')?.split(',')[0]?.trim()
+  }
 
   if (!fileId) {
     renderError(app, '파일 ID가 없습니다', 'Drive에서 파일을 열어주세요.')
     return
   }
 
-  const existingToken = getToken()
-  if (existingToken) {
+  // 저장된 토큰 있으면 바로 열기 (localStorage 덕에 탭 닫았다 열어도 유효)
+  if (getToken()) {
     await openFileFromDrive(app, fileId)
     return
   }
 
+  // 토큰 없으면 사용자 버튼 클릭 필요
   renderAuthPrompt(app, async () => {
     try {
       await requestAuth()
-      await openFileFromDrive(app, fileId)
+      await openFileFromDrive(app, fileId!)
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
       renderError(app, '인증에 실패했습니다', msg)
@@ -46,15 +61,17 @@ async function openFileFromDrive(app: HTMLElement, fileId: string) {
     }
 
     const isHwpx = ext === 'hwpx'
-    renderLoading(app, isHwpx ? '미리보기를 준비하는 중...' : '에디터를 준비하는 중...')
-    document.title = `${meta.name} — rhwp Studio${isHwpx ? ' (미리보기)' : ''}`
+    const canEdit = meta.capabilities?.canEdit ?? true
+    const viewOnly = isHwpx || !canEdit
+    renderLoading(app, viewOnly ? '미리보기를 준비하는 중...' : '에디터를 준비하는 중...')
+    document.title = `${meta.name} — rhwp Studio${viewOnly ? ' (미리보기)' : ''}`
 
     // DOM 렌더링
-    app.innerHTML = renderEditorLayout(meta.name, isHwpx)
+    app.innerHTML = renderEditorLayout(meta.name, viewOnly)
 
     document.getElementById('btn-back')?.addEventListener('click', async () => {
-      // HWPX는 미리보기 전용이므로 저장 확인 없이 바로 뒤로가기
-      if (isHwpx) {
+      // 뷰어 모드(hwpx 또는 canEdit=false)는 저장 확인 없이 바로 뒤로가기
+      if (viewOnly) {
         history.back()
         return
       }
@@ -193,19 +210,38 @@ async function openFileFromDrive(app: HTMLElement, fileId: string) {
 
     const statusText = document.getElementById('save-status')
 
-    // hwpx 토스트
+    // 뷰어 모드 토스트
     if (isHwpx) showHwpxToastIfNeeded()
+    else if (!canEdit) showViewerPermToast()
 
     // @rhwp/editor 로딩
     const { createEditor } = await import('@rhwp/editor')
     const container = document.getElementById('editor-container')!
 
-    const studioUrl = isHwpx ? '/editor/index.html?mode=view' : '/editor/index.html'
+    const studioUrl = viewOnly ? '/editor/index.html?mode=view' : '/editor/index.html'
     const editor = await createEditor(container, { studioUrl })
 
-    // hwp 파일만 저장 핸들러 등록 (hwpx는 미리보기 전용)
-    if (!isHwpx) {
-      setupSaveListener(meta.name, meta.mimeType, fileId, statusText)
+    // 편집 가능한 hwp 파일만 저장 핸들러 등록 + 탭 닫기 경고
+    if (!viewOnly) {
+      let isDirty = false
+
+      // 에디터에서 변경 발생 시 dirty 표시
+      const dirtyHandler = (e: MessageEvent) => {
+        if (e.origin !== location.origin) return
+        if (e.data?.type === 'document-dirty') isDirty = true
+      }
+      window.addEventListener('message', dirtyHandler)
+
+      // 저장 성공 시 dirty 해제
+      setupSaveListener(meta.name, meta.mimeType, fileId, statusText, () => { isDirty = false })
+
+      // 탭 닫기(X) 시 저장 경고
+      const beforeUnloadHandler = (e: BeforeUnloadEvent) => {
+        if (isDirty) {
+          e.preventDefault()
+        }
+      }
+      window.addEventListener('beforeunload', beforeUnloadHandler)
     }
 
     // 버퍼 데이터를 에디터에 주입
@@ -215,6 +251,23 @@ async function openFileFromDrive(app: HTMLElement, fileId: string) {
   } catch (e: unknown) {
     console.error(e)
     const msg = e instanceof Error ? e.message : String(e)
+    
+    // 401 권한 오류 시 자동 로그아웃 및 재인증 유도
+    if (msg.includes('401') || msg.includes('UNAUTHENTICATED') || msg.toLowerCase().includes('invalid credentials')) {
+      clearToken()
+      app.innerHTML = ''
+      renderAuthPrompt(app, async () => {
+        try {
+          await requestAuth()
+          await openFileFromDrive(app, fileId)
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : String(err)
+          renderError(app, '인증에 실패했습니다', errMsg)
+        }
+      })
+      return
+    }
+
     renderError(app, '파일을 열 수 없습니다', msg)
   }
 }

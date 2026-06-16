@@ -26,12 +26,24 @@ export function showHwpxToastIfNeeded(): void {
   }, 3000)
 }
 
+export function showViewerPermToast(): void {
+  const toast = document.getElementById('viewer-perm-toast')
+  if (!toast) return
+  toast.style.display = 'block'
+  toast.style.opacity = '1'
+  setTimeout(() => {
+    toast.style.opacity = '0'
+    setTimeout(() => { toast.style.display = 'none' }, 400)
+  }, 4000)
+}
+
 // ─── Drive 저장 메시지 리스너 (hwp 전용) ─────────────────────────────────
 export function setupSaveListener(
   metaName: string,
   metaMimeType: string,
   fileId: string,
   statusText: HTMLElement | null,
+  onSaveSuccess?: () => void,
 ): () => void {
   const handler = async (e: MessageEvent) => {
     if (e.origin !== location.origin) return
@@ -58,12 +70,15 @@ export function setupSaveListener(
     }
 
     try {
-      if (statusText) statusText.textContent = '■ 드라이브에 저장 중...'
+      if (statusText) statusText.textContent = '저장 중...'
       console.log(`[DriveOpen] Google Drive 업로드: ${saveName} (${(fileBuffer as ArrayBuffer).byteLength ?? '?'} bytes)`)
       await uploadFile(saveName, fileBuffer, saveMime, fileId)
+      onSaveSuccess?.()
       if (statusText) {
-        statusText.textContent = '✔ 드라이브 저장 완료'
-        setTimeout(() => { if (statusText.textContent?.includes('저장 완료')) statusText.textContent = '' }, 3000)
+        const now = new Date()
+        const hh = now.getHours().toString().padStart(2, '0')
+        const mm = now.getMinutes().toString().padStart(2, '0')
+        statusText.textContent = `✔ 마지막 저장 ${hh}:${mm}`
       }
       console.log('[DriveOpen] Google Drive 저장 성공')
     } catch (err) {

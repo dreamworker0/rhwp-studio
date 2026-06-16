@@ -25,6 +25,9 @@ export function renderEditorLayout(name: string, isHwpx: boolean): string {
       아직, hwpx 파일일 때는 미리보기만 가능합니다.
       <button id="hwpx-toast-close" style="margin-left:12px; background:none; border:1px solid rgba(255,255,255,0.5); color:#fff; padding:2px 8px; border-radius:4px; cursor:pointer; font-size:13px;">다시 보지 않기</button>
     </div>
+    <div id="viewer-perm-toast" style="display:none; position:fixed; bottom:32px; left:50%; transform:translateX(-50%); background:rgba(13,110,253,0.92); color:#fff; padding:14px 28px; border-radius:10px; font-size:15px; z-index:9999; box-shadow:0 4px 16px rgba(0,0,0,0.3); transition:opacity 0.4s;">
+      뷰어 권한으로 공유된 파일입니다. 읽기 전용으로 열립니다.
+    </div>
   `
 }
 

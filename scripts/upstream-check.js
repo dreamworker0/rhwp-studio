@@ -92,6 +92,34 @@ if (dirtyCheck) {
   console.log(dirtyCheck.split('\n').map((l) => `      ${l}`).join('\n'));
 }
 
+// 5. HWPX 직접 저장 베타 차단 상태
+//    (래퍼에서 hwpx view-only 해제 시점을 자동으로 판단하기 위함.
+//     upstream studio가 hwpx 직접 저장을 풀면 차단 표식이 사라진다.)
+console.log('\n[보너스] HWPX 직접 저장 차단 상태 (origin/main rhwp-studio)...');
+const SAVE_FILE = 'rhwp-studio/src/command/commands/file.ts';
+const saveSrc = git(`show origin/main:${SAVE_FILE}`);
+if (!saveSrc) {
+  console.log(`   (${SAVE_FILE} 를 읽을 수 없음 — 경로 변경 가능성, 직접 확인 필요)`);
+} else {
+  // 저장 차단을 나타내는 표식들 (문구 변경에 대비해 구조적 패턴도 함께 확인)
+  const blockers = [
+    /직접 저장이 비활성화/,                 // 베타 안내 문구
+    /HWPX[^\n]*베타/,                        // "HWPX ... 베타"
+    /sourceFormat\s*!==\s*['"]hwpx['"]/,     // canSave 게이트
+  ]
+  const blocked = blockers.some((re) => re.test(saveSrc));
+  if (blocked) {
+    console.log('   🔒 HWPX 직접 저장: 여전히 막혀 있음 (upstream 베타 차단 유지)');
+    const line = saveSrc.split('\n').find((l) => /직접 저장이 비활성화|베타/.test(l));
+    if (line) console.log(`      ↳ ${line.trim()}`);
+    console.log('      → 래퍼는 view-only 유지 권장 (DriveOpen.ts: viewOnly = isHwpx || !canEdit)');
+  } else {
+    console.log('   🔓 HWPX 직접 저장 차단 표식이 보이지 않습니다!');
+    console.log(`      → upstream이 hwpx 저장을 풀었을 가능성. ${SAVE_FILE} 확인 후`);
+    console.log('         래퍼 DriveOpen.ts의 isHwpx view-only 조건 제거를 검토하세요.');
+  }
+}
+
 console.log('\n' + '━'.repeat(60));
 if (behind && behind !== '0') {
   console.log('ℹ️  갱신하려면:  npm run upstream:update');

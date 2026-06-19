@@ -11,7 +11,7 @@ export function renderHome(app: HTMLElement) {
       <main class="home-main">
         <h1 class="home-title">
           Google Drive에서<br/>
-          <span class="gradient-text">HWP 파일을 바로 편집</span>
+          <span class="gradient-text">HWP 파일을 바로 편집, 저장</span>
         </h1>
         <p class="home-subtitle">
           한글(HWP/HWPX) 파일을 설치 없이 웹에서 편집하세요.<br/>
@@ -40,6 +40,13 @@ export function renderHome(app: HTMLElement) {
               <p>브라우저에서 파일이 바로 열려 편집할 수 있습니다</p>
             </div>
           </div>
+          <div class="step-card">
+            <div class="step-num">4</div>
+            <div class="step-content">
+              <h3>바로 저장</h3>
+              <p>구글 드라이브에 바로 저장할 수 있습니다</p>
+            </div>
+          </div>
         </div>
 
         <div class="home-badge-row">
@@ -48,6 +55,7 @@ export function renderHome(app: HTMLElement) {
           <span class="badge badge-outline">Open Source</span>
           <span class="badge badge-outline">WebAssembly</span>
         </div>
+        <p class="home-note">※ HWPX 파일은 읽기 전용으로 작동합니다.</p>
       </main>
 
       <footer class="home-footer" style="margin-top: 60px;">

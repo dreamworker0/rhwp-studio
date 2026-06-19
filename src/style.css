@@ -224,9 +224,9 @@ html, body {
 /* ─── Steps Grid ─── */
 .steps-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 20px;
-  max-width: 780px;
+  max-width: 1040px;
   width: 100%;
   margin-bottom: 48px;
 }
@@ -278,6 +278,13 @@ html, body {
   flex-wrap: wrap;
   gap: 8px;
   justify-content: center;
+}
+
+.home-note {
+  margin: 16px auto 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
 }
 
 .badge {

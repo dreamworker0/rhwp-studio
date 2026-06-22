@@ -3,36 +3,31 @@
 > **브라우저에서 HWP를 열고, 편집하고, Google Drive에 저장한다.**
 
 [![Firebase Hosting](https://img.shields.io/badge/Hosting-Firebase-FFCA28?logo=firebase)](https://rhwp-studio.web.app)
-[![License](https://img.shields.io/badge/License-Private-red)](#)
-[![Version](https://img.shields.io/badge/Version-0.7.3-blue)](#)
+[![License](https://img.shields.io/badge/License-MIT-green)](./LICENSE)
 
 ---
 
 ## ✨ 소개
 
-**rhwp-studio**는 한글과컴퓨터의 HWP/HWPX 문서를 **별도의 프로그램 설치 없이** 웹 브라우저에서 열고, 편집하고, 저장할 수 있는 온라인 문서 편집기입니다.
+**rhwp-studio**는 한글과컴퓨터의 HWP 문서를 **별도의 프로그램 설치 없이** 웹 브라우저에서 열고, 편집하고, Google Drive에 저장할 수 있는 온라인 문서 편집기입니다.
 
 - 핵심 파서/렌더러는 **Rust → WebAssembly**로 컴파일되어 네이티브에 준하는 성능을 제공합니다.
-- **Google Drive**와 통합되어 클라우드 문서를 직접 열고 저장하며 5분마다 자동 저장합니다.
-- **Google Workspace Marketplace** 확장 앱으로 등록 심사 진행 중입니다.
+- **Google Drive**와 통합되어 클라우드 문서를 직접 열고 저장합니다.
+- **Google Workspace Marketplace** 확장 앱으로 등록되어 있습니다.
+
+> **HWP는 편집/저장**을 지원하며, **HWPX는 미리보기(열람) 전용**입니다.
 
 | | |
 |---|---|
 | 🌐 **프로덕션** | https://rhwp-studio.web.app |
 | ✏️ **에디터** | https://rhwp-studio.web.app/editor/ |
-| 📦 **버전** | 0.7.3 |
 | 🔥 **호스팅** | Firebase Hosting (`rhwp-studio` 프로젝트) |
 
 ---
 
 ## 🚀 빠른 시작
 
-### 로컬 개발 서버 실행
-
 ```bash
-# 에디터 소스 디렉토리로 이동
-cd temp_editor/rhwp-studio
-
 # 의존성 설치
 npm install
 
@@ -40,21 +35,33 @@ npm install
 npm run dev
 ```
 
-> **주의**: WASM `SharedArrayBuffer` 사용을 위해 HTTPS가 필수입니다.  
-> `vite-plugin-mkcert`로 자동 로컬 인증서가 생성됩니다.
+> **주의**: WASM `SharedArrayBuffer` 사용을 위해 HTTPS가 필수입니다.
+> `vite-plugin-mkcert`로 로컬 인증서가 자동 생성됩니다.
+
+### 환경 변수
+
+`.env.example`을 복사해 `.env`를 만들고 값을 채웁니다.
+
+```bash
+cp .env.example .env
+```
+
+| 변수 | 설명 |
+|------|------|
+| `VITE_GOOGLE_CLIENT_ID` | Google OAuth 2.0 클라이언트 ID (클라이언트 번들에 노출되는 공개값) |
 
 ### 프로덕션 빌드 및 배포
 
 ```bash
-# 1. 에디터 빌드
-cd temp_editor/rhwp-studio
+# 빌드 → dist/
 npm run build
-# → 빌드 결과: ../../dist/editor/
 
-# 2. Firebase 배포
-cd ../../          # d:\apps\rhwp 루트로 이동
-firebase deploy --only hosting
+# Firebase 배포
+npx firebase deploy --only hosting
 ```
+
+> `master` 브랜치에 push하면 GitHub Actions(`.github/workflows/deploy.yml`)가
+> 자동으로 Firebase `live` 채널에 배포합니다.
 
 ---
 
@@ -62,62 +69,51 @@ firebase deploy --only hosting
 
 | 계층 | 기술 | 역할 |
 |------|------|------|
-| **핵심 엔진** | Rust → WebAssembly | HWP 파싱, 조판, 렌더링 |
-| **프론트엔드** | TypeScript + Vite | UI, 커맨드, 이벤트 |
-| **인증** | Google Identity Services | OAuth 2.0 Implicit Flow |
+| **핵심 엔진** | Rust → WebAssembly (`@rhwp/core`, `@rhwp/editor`) | HWP 파싱, 조판, 렌더링 |
+| **프론트엔드** | TypeScript + Vite | UI, 라우팅, 이벤트 |
+| **인증** | Google Identity Services | OAuth 2.0 (`drive.file`, `drive.install`) |
 | **스토리지** | Google Drive API v3 | 파일 읽기/쓰기 |
-| **배포** | Firebase Hosting | CDN, HTTPS, CORS 헤더 |
-| **폰트** | Pretendard (WOFF2) | 문서 렌더링 기본 폰트 |
-| **테스트** | Puppeteer (CDP) | E2E 자동화 테스트 (27개) |
+| **배포** | Firebase Hosting + GitHub Actions | CDN, HTTPS, CORS 헤더 |
 
 ---
 
 ## 📁 디렉토리 구조
 
 ```
-d:\apps\rhwp\
-├── temp_editor\
-│   ├── rhwp-studio\          ← 에디터 소스코드 (TypeScript)
-│   │   ├── src\
-│   │   │   ├── main.ts       ← 진입점
-│   │   │   ├── core\         ← WASM 브릿지, Drive API, 자동저장
-│   │   │   ├── command\      ← 커맨드 시스템 (8개 카테고리)
-│   │   │   ├── engine\       ← 편집 엔진 (입력, 커서, 히스토리)
-│   │   │   ├── ui\           ← UI 컴포넌트 (38개)
-│   │   │   └── view\         ← 캔버스 뷰, 가상 스크롤, 눈금자
-│   │   ├── public\           ← 정적 파일 (WASM, 폰트, 샘플)
-│   │   └── e2e\              ← E2E 테스트
-│   └── pkg\                  ← WASM 패키지 원본 (Rust 빌드 결과)
-├── dist\
-│   └── editor\               ← 빌드 출력물 (firebase deploy 대상)
-├── firebase.json             ← Firebase Hosting 설정
-└── .firebaserc               ← Firebase 프로젝트 매핑
+rhwp-studio/
+├── src/
+│   ├── pages/          ← 페이지 (Home, Terms, Privacy, DriveOpen 등)
+│   ├── components/     ← 공용 UI 컴포넌트
+│   └── lib/            ← Drive API, 인증, 에디터/렌더러 유틸
+├── public/             ← 정적 파일 (에디터 번들, WASM, 폰트)
+│   └── editor/         ← 빌드된 에디터 (/editor 경로로 서빙)
+├── scripts/            ← 빌드/업스트림 동기화 스크립트
+├── docs/               ← 운영 문서
+├── index.html          ← 진입점
+├── vite.config.ts      ← Vite 설정
+├── firebase.json       ← Firebase Hosting 설정 (CORS 헤더 포함)
+└── .github/workflows/  ← CI/CD (Firebase 자동 배포)
 ```
 
 ---
 
 ## ⚙️ 주요 기능
 
-### 문서 편집
-- HWP / HWPX 파일 열기 (로컬 또는 Google Drive)
-- 텍스트 입력, 삭제, 복사/붙이기, 실행취소/재실행
+### 문서 편집 (HWP)
+- HWP 파일 열기 (로컬 또는 Google Drive)
+- 텍스트 입력/삭제/복사·붙이기, 실행취소/재실행
 - 글자 모양 (글꼴, 크기, 색상, 밑줄, 볼드)
 - 문단 모양 (정렬, 들여쓰기, 줄간격, 테두리)
-- 표 삽입 및 편집 (행/열 추가삭제, 셀 합치기/나누기)
-- 그림 삽입 및 크기 조절
-- 수식 편집 (LaTeX 기반)
-- 찾기 / 바꾸기
-- 미리보기 모드 (Read-only, 커서 숨김)
+- 표 삽입 및 편집, 그림 삽입/크기 조절
+- 수식 편집 (LaTeX 기반), 찾기/바꾸기
+
+### 미리보기 (HWPX)
+- HWPX 파일은 열람(미리보기)만 지원하며 편집/저장은 지원하지 않습니다.
 
 ### Google Drive 연동
 - URL 파라미터(`?fileId=XXX`)로 Drive 파일 직접 열기
 - `Ctrl+S` 또는 저장 버튼으로 Drive에 즉시 저장
-- **5분 간격 자동 저장** (오프라인 시 자동 스킵)
-- 저장 실패 시 로컬 다운로드 fallback
-
-### 렌더링 성능
-- 가상 스크롤: 뷰포트에 보이는 페이지만 렌더링
-- 캔버스 풀링: Canvas 재사용으로 메모리 최적화
+- 뷰어(읽기 전용) 권한 파일은 저장이 제한되며, 사본 저장으로 안내됩니다
 
 ---
 
@@ -130,42 +126,21 @@ d:\apps\rhwp\
 | `Ctrl+Z` / `Ctrl+Y` | 실행취소 / 재실행 |
 | `Ctrl+C` / `Ctrl+V` / `Ctrl+X` | 복사 / 붙이기 / 잘라내기 |
 | `Ctrl+A` | 전체 선택 |
-| `Ctrl+F` | 찾기 |
-| `Ctrl+H` | 바꾸기 |
+| `Ctrl+F` / `Ctrl+H` | 찾기 / 바꾸기 |
 | `Ctrl+P` | 인쇄 |
-| `Ctrl+Shift+P` | 명령 팔레트 |
-
----
-
-## 🧪 테스트
-
-E2E 테스트는 Puppeteer/CDP 기반으로 작성되어 있습니다.
-
-```bash
-cd temp_editor/rhwp-studio
-
-# 개별 테스트 실행
-node e2e/text-flow.test.mjs
-node e2e/drive-save-flow.test.mjs
-
-# 전체 시나리오 실행
-node e2e/scenario-runner.mjs
-```
-
-> **사전 조건**: Chrome을 `--remote-debugging-port=9222` 옵션으로 실행한 뒤  
-> `CHROME_CDP` 환경 변수에 CDP 엔드포인트 주소를 설정해야 합니다.
 
 ---
 
 ## 🔒 보안 / CORS 요구 사항
 
-WASM `SharedArrayBuffer`를 사용하기 위해 아래 HTTP 헤더가 **필수**입니다.  
-`firebase.json`에 이미 설정되어 있습니다.
+WASM `SharedArrayBuffer`를 사용하기 위해 아래 HTTP 헤더가 **필수**이며, `firebase.json`에 설정되어 있습니다.
 
 ```
 Cross-Origin-Embedder-Policy: require-corp
 Cross-Origin-Opener-Policy: same-origin
 ```
+
+OAuth는 비민감 스코프(`drive.file`, `drive.install`)만 사용하며, 문서는 서버에 저장되지 않고 **브라우저 내부(WASM)에서만 처리**됩니다.
 
 ---
 
@@ -173,33 +148,14 @@ Cross-Origin-Opener-Policy: same-origin
 
 | 항목 | 설명 |
 |------|------|
-| **HWPX 저장** | 현재 베타 단계로 저장 비활성화 (`#197` 완전 변환기 완료 후 활성화 예정) |
-| **WASM 파일 동기화** | `public/`과 `pkg/`의 WASM 파일은 수동 복사 필요 |
-| **토큰 저장** | `sessionStorage` 사용 (탭 종료 시 소멸, XSS 취약점 검토 중) |
+| **HWPX 편집** | 미리보기 전용 (편집/저장 미지원) |
+| **읽기 전용 파일** | Drive 뷰어 권한 파일은 원본 저장 불가 (사본 저장으로 안내) |
 | **대용량 파일** | 100MB 이상 HWP 처리 시 메모리 부족 가능 |
 
 ---
 
-## 🗺️ 향후 계획
+## 📄 라이선스
 
-| 우선순위 | 항목 |
-|----------|------|
-| 🔴 높음 | HWPX 완전 저장 (`#197`) |
-| 🟡 중간 | 오프라인 모드 (Service Worker + IndexedDB) |
-| 🟡 중간 | 실시간 협업 (WebSocket/WebRTC) |
-| 🟢 낮음 | PDF 내보내기 |
-| 🟢 낮음 | 모바일 최적화 (터치 입력) |
+이 프로젝트는 [MIT License](./LICENSE)로 배포됩니다.
 
----
-
-## 🔗 관련 링크
-
-| | |
-|---|---|
-| Firebase Console | https://console.firebase.google.com/project/rhwp-studio |
-| Google Cloud Console | https://console.cloud.google.com |
-| 구현계획서 | [rhwp_구현계획서.md](./rhwp_구현계획서.md) |
-
----
-
-*최종 업데이트: 2026-04-22 (v0.7.3)*
+핵심 엔진인 [`@rhwp/core`](https://www.npmjs.com/package/@rhwp/core) / [`@rhwp/editor`](https://www.npmjs.com/package/@rhwp/editor) 역시 MIT 라이선스(© Edward Kim)를 따릅니다.

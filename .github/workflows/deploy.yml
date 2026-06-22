@@ -26,6 +26,10 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          # 공개 OAuth Client ID — 클라이언트 번들에 그대로 노출되는 값이라 비밀이 아님.
+          # Vite는 빌드 시점에 이 값을 번들에 박아넣으므로 CI 빌드에 반드시 필요하다.
+          VITE_GOOGLE_CLIENT_ID: 292079787292-qmjcruc73ogvoffnf63f28nj7ov30csn.apps.googleusercontent.com
 
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0

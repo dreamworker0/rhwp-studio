@@ -1,4 +1,4 @@
-import { getToken, requestAuth, clearToken } from '../lib/auth'
+import { getToken, requestAuth, requestAuthSilent, clearToken } from '../lib/auth'
 import { getFileMeta, downloadFile, uploadFile } from '../lib/drive'
 import { renderEditorLayout, renderAuthPrompt, renderLoading, renderError } from '../components/ui'
 import { showHwpxToastIfNeeded, showViewerPermToast, setupSaveListener, loadFileDirectly } from '../lib/editor-utils'
@@ -33,7 +33,18 @@ export async function renderDriveOpen(app: HTMLElement) {
     return
   }
 
-  // 토큰 없으면 사용자 버튼 클릭 필요
+  // 토큰이 없어도, Marketplace 설치 + 구글 로그인 상태면 화면 없이 조용히 인증 시도.
+  // 성공하면 로그인 창 없이 바로 파일을 연다.
+  renderLoading(app, '인증 확인 중...')
+  try {
+    await requestAuthSilent()
+    await openFileFromDrive(app, fileId)
+    return
+  } catch {
+    // 조용한 인증 실패(미로그인/미동의 등) → 아래에서 버튼 표시 후 대화형 인증
+  }
+
+  // 조용한 인증이 안 되면 사용자 버튼 클릭 필요
   renderAuthPrompt(app, async () => {
     try {
       await requestAuth()

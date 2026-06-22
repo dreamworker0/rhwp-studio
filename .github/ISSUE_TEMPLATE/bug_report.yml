@@ -1,0 +1,54 @@
+name: 🐛 버그 리포트
+description: 동작이 의도와 다른 문제를 제보합니다
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        버그를 제보해주셔서 감사합니다. 재현에 도움이 되도록 아래 항목을 채워주세요.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 무슨 일이 일어났나요?
+      description: 현재 동작과 기대했던 동작을 적어주세요.
+      placeholder: "예) HWP 파일 저장 시 403 오류가 발생합니다. 정상적으로 저장되어야 합니다."
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 재현 방법
+      description: 문제를 재현하는 단계를 순서대로 적어주세요.
+      placeholder: |
+        1. Google Drive에서 HWP 파일을 연다
+        2. 텍스트를 수정한다
+        3. Ctrl+S를 누른다
+        4. 오류 발생
+    validations:
+      required: true
+  - type: dropdown
+    id: file-type
+    attributes:
+      label: 파일 종류
+      options:
+        - HWP
+        - HWPX
+        - 해당 없음 / 모름
+    validations:
+      required: false
+  - type: input
+    id: env
+    attributes:
+      label: 환경
+      description: 브라우저와 OS 버전을 적어주세요.
+      placeholder: "예) Chrome 125 / Windows 11"
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: 추가 정보
+      description: 콘솔 오류 로그, 스크린샷, 샘플 파일 등이 있으면 첨부해주세요.
+    validations:
+      required: false

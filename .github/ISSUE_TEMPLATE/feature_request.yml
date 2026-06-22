@@ -1,0 +1,27 @@
+name: 💡 기능 제안
+description: 새로운 기능이나 개선 아이디어를 제안합니다
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 어떤 불편이나 필요에서 출발했나요?
+      description: 해결하려는 문제나 상황을 설명해주세요.
+      placeholder: "예) 편집한 문서를 PDF로 내보내고 싶은데 현재는 방법이 없습니다."
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: 원하는 동작
+      description: 어떤 기능이 어떻게 동작하면 좋을지 적어주세요.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 대안 / 참고
+      description: 고려해본 다른 방법이나 참고할 만한 사례가 있으면 적어주세요.
+    validations:
+      required: false

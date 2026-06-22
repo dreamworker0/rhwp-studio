@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 질문 / 사용 문의
+    url: https://github.com/dreamworker0/rhwp-studio/discussions
+    about: 버그·기능 제안이 아닌 일반 질문은 Discussions를 이용해주세요.

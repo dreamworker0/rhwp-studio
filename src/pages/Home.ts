@@ -14,7 +14,8 @@ export function renderHome(app: HTMLElement) {
           <span class="gradient-text">HWP 파일을 바로 편집, 저장</span>
         </h1>
         <p class="home-subtitle">
-          한글(HWP/HWPX) 파일을 설치 없이 웹에서 편집하세요.<br/>
+          한글(HWP) 파일을 설치 없이 웹에서 편집하세요.<br/>
+          (HWPX는 미리보기)<br/>
           Open source · Rust + WebAssembly
         </p>
 

@@ -23,15 +23,15 @@ declare global {
             client_id: string
             scope: string
             prompt?: string
+            login_hint?: string
             callback: (response: { access_token: string; error?: string; expires_in?: number }) => void
+            error_callback?: (error: { type?: string; message?: string }) => void
           }): { requestAccessToken(opts?: { prompt?: string }): void }
         }
       }
     }
   }
 }
-
-let tokenClientInstance: { requestAccessToken(opts?: { prompt?: string }): void } | null = null
 
 export function getToken(): string | null {
   const token = localStorage.getItem(TOKEN_KEY)
@@ -73,16 +73,17 @@ async function waitForGIS(timeout = 5000): Promise<void> {
 }
 
 /**
- * 사용자 버튼 클릭 후 호출.
+ * 토큰 1회 획득. `prompt`에 따라 동작이 다르다.
  *
- * Marketplace 설치 시 부여된 동의를 재사용하기 위해 `prompt: ''`(조용한 재사용)을
- * 먼저 시도하고, 기존 동의가 없을 때만 대화형 동의 화면(`prompt: 'consent'`)으로
- * 폴백한다. 이렇게 하면 이미 동의한 사용자에게 두 번째 동의 화면이 뜨지 않는다.
+ * - `'none'`  : 화면을 절대 띄우지 않는 "조용한 인증". Marketplace 설치 시 동의를 마쳤고
+ *               사용자가 구글에 로그인된 상태면 창 없이 토큰을 반환한다. 그렇지 않으면
+ *               즉시 reject(상호작용 필요) → 호출부에서 대화형으로 폴백한다.
+ * - `'consent'`: 동의/계정 선택 화면을 띄우는 대화형 인증.
  *
  * ⚠️ 동의 화면이 다시 뜨지 않으려면, 여기서 요청하는 SCOPE가 OAuth 동의 화면 /
  *    Marketplace SDK / Drive SDK에 설정된 스코프와 "정확히" 일치해야 한다.
  */
-export async function requestAuth(): Promise<string> {
+async function acquireToken(prompt: 'none' | 'consent'): Promise<string> {
   if (!CLIENT_ID) {
     throw new Error(
       'Google OAuth Client ID가 설정되지 않았습니다.\n' +
@@ -92,41 +93,55 @@ export async function requestAuth(): Promise<string> {
 
   await waitForGIS()
 
+  const gis = window.google?.accounts?.oauth2
+  if (!gis) {
+    throw new Error('Google Identity Services를 로드할 수 없습니다.')
+  }
+
   return new Promise((resolve, reject) => {
-    const gis = window.google?.accounts?.oauth2
-    if (!gis) {
-      reject(new Error('Google Identity Services를 로드할 수 없습니다.'))
-      return
-    }
-
-    let triedInteractive = false
-
-    tokenClientInstance = gis.initTokenClient({
+    const client = gis.initTokenClient({
       client_id: CLIENT_ID,
       scope: SCOPE,
+      prompt,
       callback: (response) => {
         if (response.error) {
-          // 조용한 재사용이 실패한 경우(기존 동의 없음 등): 한 번만 대화형으로 폴백
-          if (!triedInteractive) {
-            triedInteractive = true
-            tokenClientInstance!.requestAccessToken({ prompt: 'consent' })
-            return
-          }
           reject(new Error(`OAuth 오류: ${response.error}`))
-        } else {
-          saveToken(response.access_token, response.expires_in)
-          resolve(response.access_token)
+          return
         }
+        saveToken(response.access_token, response.expires_in)
+        resolve(response.access_token)
+      },
+      // prompt:'none' 실패(상호작용 필요 등)는 보통 여기로 전달된다.
+      error_callback: (err) => {
+        reject(new Error(err?.type || err?.message || 'auth_error'))
       },
     })
-
-    // 1차: 기존 동의 재사용 시도(화면 없음). 실패 시 callback에서 대화형 폴백.
-    tokenClientInstance.requestAccessToken({ prompt: '' })
+    client.requestAccessToken()
   })
+}
+
+/**
+ * 화면 없이 토큰을 시도한다. 설치+로그인된 사용자는 창 없이 통과.
+ * 상호작용이 필요하면 reject 하므로, 호출부에서 catch 후 requestAuth()로 폴백한다.
+ */
+export function requestAuthSilent(): Promise<string> {
+  return acquireToken('none')
+}
+
+/**
+ * 동의/계정 선택 화면을 띄우는 대화형 인증. 사용자 버튼 클릭 후 호출.
+ */
+export function requestAuth(): Promise<string> {
+  return acquireToken('consent')
 }
 
 export async function ensureAuth(): Promise<string> {
   const existing = getToken()
   if (existing) return existing
-  return requestAuth()
+  // 먼저 조용히 시도하고, 안 되면 대화형으로 폴백
+  try {
+    return await requestAuthSilent()
+  } catch {
+    return requestAuth()
+  }
 }

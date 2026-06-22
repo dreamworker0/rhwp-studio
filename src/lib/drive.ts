@@ -60,6 +60,30 @@ function parseErrorMessage(body: string): string {
   }
 }
 
+/**
+ * 파일에 걸린 "내용 제한(읽기 전용, contentRestrictions.readOnly=true)"을 해제한다.
+ * 해제 권한(canModifyContentRestriction)이 없으면 사용자용 안내 메시지로 throw.
+ */
+async function clearContentRestriction(fileId: string): Promise<void> {
+  const res = await fetch(
+    `${DRIVE_API}/files/${fileId}?supportsAllDrives=true`,
+    {
+      method: 'PATCH',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contentRestrictions: [{ readOnly: false }] }),
+    },
+  )
+  if (!res.ok) {
+    const body = await res.text()
+    console.error('내용 제한 해제 실패:', res.status, body)
+    throw new Error(
+      '이 파일은 읽기 전용으로 잠겨 있어 저장할 수 없습니다.\n' +
+      '잠금을 해제할 권한이 없습니다. 파일 소유자에게 잠금 해제를 요청하거나, ' +
+      '"다운로드" 버튼으로 사본을 저장하세요.',
+    )
+  }
+}
+
 export async function uploadFile(
   name: string,
   data: ArrayBuffer | Uint8Array,
@@ -73,21 +97,37 @@ export async function uploadFile(
     ? data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)
     : data
 
-  const meta = { name, mimeType }
-  const form = new FormData()
-  form.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' }))
-  form.append('file', new Blob([buffer as ArrayBuffer], { type: mimeType }), name)
-
   // supportsAllDrives=true: 공유 드라이브 파일 포함, 일반 드라이브도 안정성↑
   const url = fileId
     ? `${UPLOAD_API}/files/${fileId}?uploadType=multipart&supportsAllDrives=true`
     : `${UPLOAD_API}/files?uploadType=multipart&supportsAllDrives=true`
 
-  const res = await fetch(url, {
-    method: fileId ? 'PATCH' : 'POST',
-    headers: authHeaders(),
-    body: form,
-  })
+  // buffer로부터 매번 새 FormData를 만든다(재시도 시 본문 재사용을 위해 함수로 분리).
+  const doUpload = (): Promise<Response> => {
+    const form = new FormData()
+    form.append('metadata', new Blob([JSON.stringify({ name, mimeType })], { type: 'application/json' }))
+    form.append('file', new Blob([buffer as ArrayBuffer], { type: mimeType }), name)
+    return fetch(url, {
+      method: fileId ? 'PATCH' : 'POST',
+      headers: authHeaders(),
+      body: form,
+    })
+  }
+
+  let res = await doUpload()
+
+  // 파일이 읽기 전용(내용 제한)으로 잠겨 있어 거부된 경우: 잠금 해제 후 1회 재시도
+  if (!res.ok && res.status === 403 && fileId) {
+    const body = await res.text()
+    if (body.includes('contentRestriction')) {
+      console.warn('[drive] 파일이 읽기 전용으로 잠겨 있어 내용 제한을 해제하고 재시도합니다.')
+      await clearContentRestriction(fileId)
+      res = await doUpload()
+    } else {
+      console.error('Drive 업로드 오류 (403):', body)
+      throw new Error(`Drive 업로드 오류 (403): ${parseErrorMessage(body)}`)
+    }
+  }
 
   if (!res.ok) {
     const body = await res.text()

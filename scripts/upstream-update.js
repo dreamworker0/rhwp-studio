@@ -128,20 +128,24 @@ try {
     process.exit(1);
   }
 
-  // ── [4/6] 의존성 설치 ─────────────────────────────────────────────
-  console.log('\n[4/6] 의존성 설치 (npm install)...');
+  // ── [4/8] 의존성 설치 ─────────────────────────────────────────────
+  console.log('\n[4/8] 의존성 설치 (npm install)...');
   run('npm install');
 
-  // ── [5/6] 에디터 빌드 (→ public/editor/) ──────────────────────────
-  console.log('\n[5/6] 에디터 빌드 (npm run build → public/editor/)...');
+  // ── [5/8] WASM 동기화 (pkg/ ↔ npm @rhwp/core, 버전 불일치 방지) ────
+  console.log('\n[5/8] WASM 동기화 (sync:wasm — pkg/를 신버전 WASM으로)...');
+  runRoot('node scripts/sync-wasm.js');
+
+  // ── [6/8] 에디터 빌드 (→ public/editor/) ──────────────────────────
+  console.log('\n[6/8] 에디터 빌드 (npm run build → public/editor/)...');
   run('npm run build');
 
-  // ── [6/7] post-build (HTML 커스터마이즈 주입) ─────────────────────
-  console.log('\n[6/7] post-build: HTML 커스터마이즈 주입...');
+  // ── [7/8] post-build (HTML 커스터마이즈 주입) ─────────────────────
+  console.log('\n[7/8] post-build: HTML 커스터마이즈 주입...');
   runRoot('node scripts/post-build.js');
 
-  // ── [7/7] 커스텀 연동 검증 (저장→Drive 등이 살아있는지) ────────────
-  console.log('\n[7/7] 커스텀 연동 검증 (verify:custom)...');
+  // ── [8/8] 커스텀 연동 검증 (저장→Drive 등이 살아있는지) ────────────
+  console.log('\n[8/8] 커스텀 연동 검증 (verify:custom)...');
   console.log('      ⚠️  실패 시 저장 연동이 깨진 것이므로 배포하지 말 것.');
   runRoot('node scripts/verify-custom.js');
 

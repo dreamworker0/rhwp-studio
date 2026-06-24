@@ -10,7 +10,6 @@ export function renderEditorLayout(name: string, isHwpx: boolean): string {
     <div class="editor-container">
       <header class="editor-header">
         <div class="editor-brand">
-          <button id="btn-back" class="btn btn-secondary" style="margin-right:10px;">← 뒤로가기</button>
           <span class="editor-filename">${escapedName}</span>
           ${isHwpx ? '<span class="editor-status" style="margin-left:8px; background:#ffc107; color:#212529;">미리보기</span>' : ''}
         </div>

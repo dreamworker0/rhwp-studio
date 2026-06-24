@@ -16,14 +16,11 @@ export function showHwpxToastIfNeeded(): void {
     setTimeout(() => { toast.style.display = 'none' }, 400)
   }
 
+  // '다시 보지 않기'를 누를 때까지 유지 (자동으로 사라지지 않음)
   document.getElementById('hwpx-toast-close')?.addEventListener('click', () => {
     localStorage.setItem(HWPX_TOAST_KEY, '1')
     dismissToast()
   })
-
-  setTimeout(() => {
-    dismissToast()
-  }, 3000)
 }
 
 export function showViewerPermToast(): void {

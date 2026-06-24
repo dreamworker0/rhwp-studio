@@ -136,9 +136,14 @@ try {
   console.log('\n[5/6] 에디터 빌드 (npm run build → public/editor/)...');
   run('npm run build');
 
-  // ── [6/6] post-build (HTML 커스터마이즈 주입) ─────────────────────
-  console.log('\n[6/6] post-build: HTML 커스터마이즈 주입...');
+  // ── [6/7] post-build (HTML 커스터마이즈 주입) ─────────────────────
+  console.log('\n[6/7] post-build: HTML 커스터마이즈 주입...');
   runRoot('node scripts/post-build.js');
+
+  // ── [7/7] 커스텀 연동 검증 (저장→Drive 등이 살아있는지) ────────────
+  console.log('\n[7/7] 커스텀 연동 검증 (verify:custom)...');
+  console.log('      ⚠️  실패 시 저장 연동이 깨진 것이므로 배포하지 말 것.');
+  runRoot('node scripts/verify-custom.js');
 
   console.log('\n' + '━'.repeat(60));
   console.log('✅ upstream 갱신 완료!');

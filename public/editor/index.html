@@ -20,7 +20,9 @@
   <script>
     if (new URLSearchParams(location.search).get('mode') === 'view') {
       var s = document.createElement('style');
-      s.textContent = '#menu-bar, #icon-toolbar, #style-bar { display: none !important; }';
+      s.textContent =
+        '#menu-bar, #icon-toolbar, #style-bar { display: none !important; }' +
+        '.caret, .caret-composition { display: none !important; }';  // 미리보기: 깜빡이는 커서 숨김
       document.head.appendChild(s);
 
       // 본문 편집 차단(읽기전용): 엔진(input-handler)을 수정하지 않고, 편집 의도

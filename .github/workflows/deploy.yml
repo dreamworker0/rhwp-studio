@@ -31,13 +31,25 @@ jobs:
           # Vite는 빌드 시점에 이 값을 번들에 박아넣으므로 CI 빌드에 반드시 필요하다.
           VITE_GOOGLE_CLIENT_ID: 292079787292-qmjcruc73ogvoffnf63f28nj7ov30csn.apps.googleusercontent.com
 
-      - name: Deploy to Firebase Hosting
-        uses: FirebaseExtended/action-hosting-deploy@v0
+      # 서비스계정 키를 임시 파일로 기록 → firebase-tools가 GOOGLE_APPLICATION_CREDENTIALS로 인증.
+      # 따옴표된 heredoc('SA')라 secret 내용은 셸 해석 없이 그대로(멀티라인/특수문자 포함) 안전하게 기록된다.
+      - name: Prepare service account
+        run: |
+          cat > "$RUNNER_TEMP/gac.json" <<'SA'
+          ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SA
+
+      # 배포 실패는 대부분 OAuth 토큰 교환 중 'Premature close'(일시적 네트워크 오류)다.
+      # FirebaseExtended 액션은 즉시 1회만 재시도해 같은 순간의 오류를 그대로 다시 맞는다.
+      # 대기 시간을 둔 재시도로 일시적 실패를 흡수한다. (CLI 직접 호출 → 구형 액션의 Node20 경고도 제거)
+      - name: Deploy to Firebase Hosting (retry on transient auth errors)
+        uses: nick-fields/retry@v3
         with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          projectId: rhwp-studio
-          channelId: live
-          # firebase-tools@latest(15.22.2)가 서비스계정 인증에서 'Premature close'로
-          # 실패하는 문제 회피 — 로컬에서 정상 동작하는 버전으로 고정.
-          firebaseToolsVersion: "15.8.0"
+          timeout_minutes: 10
+          max_attempts: 3
+          retry_wait_seconds: 20
+          # firebase-tools는 재현성을 위해 고정. (15.8.0/최신 모두 동일한 일시적 오류를
+          # 겪었으므로 버전이 원인은 아님 — 핀은 빌드 재현성 목적.)
+          command: npx -y firebase-tools@15.8.0 deploy --only hosting --project rhwp-studio --non-interactive
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gac.json

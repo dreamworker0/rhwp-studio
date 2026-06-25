@@ -42,9 +42,11 @@ const SCOPES = [
   'https://www.googleapis.com/auth/drive.install',
 ].join(' ');
 
-const SESSION_COOKIE = 'rhwp_session';
-const STATE_COOKIE = 'rhwp_oauth_state';
+// ⚠️ Firebase Hosting 은 '__session' 이름의 쿠키만 함수로 전달/설정하도록 허용한다.
+//    (나머지 쿠키는 CDN 캐싱을 위해 제거됨) → 세션 쿠키 이름은 반드시 '__session'.
+const SESSION_COOKIE = '__session';
 const SESSION_MAX_AGE = 60 * 60 * 24 * 60; // 60일
+const STATE_TTL_MS = 10 * 60 * 1000; // OAuth state 유효 10분
 
 // ─── 쿠키 유틸 ──────────────────────────────────────────────────────────
 function parseCookies(req) {
@@ -100,8 +102,12 @@ async function exchangeToken(params) {
 async function handleLogin(req, res) {
   const state = crypto.randomBytes(16).toString('hex');
   const ret = safeReturnPath(req.query.return);
-  // state(CSRF) + 복귀 경로를 단기 쿠키에 보관
-  setCookie(res, STATE_COOKIE, `${state}|${ret}`, { maxAge: 600 });
+  // state(CSRF) + 복귀 경로를 Firestore 에 단기 저장.
+  // (Hosting 이 '__session' 외 쿠키를 제거하므로 state 를 쿠키로 못 쓴다.)
+  await db.collection('oauthStates').doc(state).set({
+    ret,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
 
   const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   url.searchParams.set('client_id', CLIENT_ID);
@@ -116,14 +122,26 @@ async function handleLogin(req, res) {
 }
 
 async function handleCallback(req, res) {
-  const cookies = parseCookies(req);
-  const [expectState, ret] = String(cookies[STATE_COOKIE] || '').split('|');
-  setCookie(res, STATE_COOKIE, '', { clear: true });
-
-  if (!req.query.code || !req.query.state || req.query.state !== expectState) {
+  const state = String(req.query.state || '');
+  if (!req.query.code || !state) {
+    res.status(400).send('잘못된 OAuth 요청');
+    return;
+  }
+  // Firestore 에 저장해 둔 state 확인(존재 + 만료 검사) 후 1회용으로 삭제.
+  const stateRef = db.collection('oauthStates').doc(state);
+  const stateSnap = await stateRef.get();
+  await stateRef.delete().catch(() => {});
+  if (!stateSnap.exists) {
     res.status(400).send('잘못된 OAuth 요청(state 불일치)');
     return;
   }
+  const stateData = stateSnap.data();
+  const createdMs = stateData.createdAt ? stateData.createdAt.toMillis() : 0;
+  if (!createdMs || Date.now() - createdMs > STATE_TTL_MS) {
+    res.status(400).send('로그인 요청이 만료되었습니다. 다시 시도해 주세요.');
+    return;
+  }
+  const ret = safeReturnPath(stateData.ret);
 
   const tokenRes = await exchangeToken({
     code: req.query.code,

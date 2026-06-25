@@ -38,3 +38,6 @@ jobs:
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           projectId: rhwp-studio
           channelId: live
+          # firebase-tools@latest(15.22.2)가 서비스계정 인증에서 'Premature close'로
+          # 실패하는 문제 회피 — 로컬에서 정상 동작하는 버전으로 고정.
+          firebaseToolsVersion: "15.8.0"

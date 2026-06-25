@@ -1,4 +1,4 @@
-import { getToken, requestAuth, requestAuthSilent, clearToken } from '../lib/auth'
+import { getAccessToken, startLogin, clearTokenCache, NotAuthenticatedError } from '../lib/auth'
 import { getFileMeta, downloadFile, uploadFile } from '../lib/drive'
 import { renderEditorLayout, renderAuthPrompt, renderLoading, renderError } from '../components/ui'
 import { showHwpxToastIfNeeded, showViewerPermToast, setupSaveListener, loadFileDirectly } from '../lib/editor-utils'
@@ -27,33 +27,20 @@ export async function renderDriveOpen(app: HTMLElement) {
     return
   }
 
-  // 저장된 토큰 있으면 바로 열기 (localStorage 덕에 탭 닫았다 열어도 유효)
-  if (getToken()) {
-    await openFileFromDrive(app, fileId)
-    return
-  }
-
-  // 토큰이 없어도, Marketplace 설치 + 구글 로그인 상태면 화면 없이 조용히 인증 시도.
-  // 성공하면 로그인 창 없이 바로 파일을 연다.
+  // 백엔드 세션으로 토큰 확보 시도. 세션 쿠키가 살아 있으면(최대 60일) 창 없이 바로 연다.
   renderLoading(app, '인증 확인 중...')
   try {
-    await requestAuthSilent()
+    await getAccessToken()
     await openFileFromDrive(app, fileId)
     return
-  } catch {
-    // 조용한 인증 실패(미로그인/미동의 등) → 아래에서 버튼 표시 후 대화형 인증
-  }
-
-  // 조용한 인증이 안 되면 사용자 버튼 클릭 필요
-  renderAuthPrompt(app, async () => {
-    try {
-      await requestAuth()
-      await openFileFromDrive(app, fileId!)
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e)
-      renderError(app, '인증에 실패했습니다', msg)
+  } catch (e: unknown) {
+    if (!(e instanceof NotAuthenticatedError)) {
+      renderError(app, '인증 확인에 실패했습니다', e instanceof Error ? e.message : String(e))
+      return
     }
-  })
+    // 세션 없음 → 로그인 버튼 표시. 클릭 시 Google 로그인으로 이동하고 완료 후 이 파일로 복귀한다.
+  }
+  renderAuthPrompt(app, () => startLogin())
 }
 
 async function openFileFromDrive(app: HTMLElement, fileId: string) {
@@ -263,19 +250,11 @@ async function openFileFromDrive(app: HTMLElement, fileId: string) {
     console.error(e)
     const msg = e instanceof Error ? e.message : String(e)
     
-    // 401 권한 오류 시 자동 로그아웃 및 재인증 유도
+    // 401 권한 오류 시 토큰 캐시를 비우고 재로그인 유도
     if (msg.includes('401') || msg.includes('UNAUTHENTICATED') || msg.toLowerCase().includes('invalid credentials')) {
-      clearToken()
+      clearTokenCache()
       app.innerHTML = ''
-      renderAuthPrompt(app, async () => {
-        try {
-          await requestAuth()
-          await openFileFromDrive(app, fileId)
-        } catch (err: unknown) {
-          const errMsg = err instanceof Error ? err.message : String(err)
-          renderError(app, '인증에 실패했습니다', errMsg)
-        }
-      })
+      renderAuthPrompt(app, () => startLogin())
       return
     }
 

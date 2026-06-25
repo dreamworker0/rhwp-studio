@@ -1,7 +1,7 @@
 /**
  * Google Drive API 헬퍼
  */
-import { getToken } from './auth'
+import { getAccessToken } from './auth'
 
 const DRIVE_API = 'https://www.googleapis.com/drive/v3'
 const UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3'
@@ -14,18 +14,15 @@ export interface DriveFileMeta {
   capabilities?: { canEdit: boolean }
 }
 
-function authHeaders(): HeadersInit {
-  const token = getToken()
-  if (!token) {
-    throw new Error('인증 토큰이 없습니다. 다시 로그인해주세요.')
-  }
+async function authHeaders(): Promise<HeadersInit> {
+  const token = await getAccessToken()
   return { Authorization: `Bearer ${token}` }
 }
 
 export async function getFileMeta(fileId: string): Promise<DriveFileMeta> {
   const res = await fetch(
     `${DRIVE_API}/files/${fileId}?fields=id,name,mimeType,size,capabilities&supportsAllDrives=true`,
-    { headers: authHeaders() },
+    { headers: await authHeaders() },
   )
   if (!res.ok) {
     const body = await res.text()
@@ -38,7 +35,7 @@ export async function getFileMeta(fileId: string): Promise<DriveFileMeta> {
 export async function downloadFile(fileId: string): Promise<ArrayBuffer> {
   const res = await fetch(
     `${DRIVE_API}/files/${fileId}?alt=media&supportsAllDrives=true`,
-    { headers: authHeaders() },
+    { headers: await authHeaders() },
   )
   if (!res.ok) {
     const body = await res.text()
@@ -69,7 +66,7 @@ async function clearContentRestriction(fileId: string): Promise<void> {
     `${DRIVE_API}/files/${fileId}?supportsAllDrives=true`,
     {
       method: 'PATCH',
-      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      headers: { ...(await authHeaders()), 'Content-Type': 'application/json' },
       body: JSON.stringify({ contentRestrictions: [{ readOnly: false }] }),
     },
   )
@@ -103,13 +100,14 @@ export async function uploadFile(
     : `${UPLOAD_API}/files?uploadType=multipart&supportsAllDrives=true`
 
   // buffer로부터 매번 새 FormData를 만든다(재시도 시 본문 재사용을 위해 함수로 분리).
-  const doUpload = (): Promise<Response> => {
+  const doUpload = async (): Promise<Response> => {
+    const headers = await authHeaders()
     const form = new FormData()
     form.append('metadata', new Blob([JSON.stringify({ name, mimeType })], { type: 'application/json' }))
     form.append('file', new Blob([buffer as ArrayBuffer], { type: mimeType }), name)
     return fetch(url, {
       method: fileId ? 'PATCH' : 'POST',
-      headers: authHeaders(),
+      headers,
       body: form,
     })
   }

@@ -51,6 +51,23 @@ function saveToken(token: string, expiresIn = 3600) {
   localStorage.setItem(TOKEN_EXPIRY_KEY, String(Date.now() + (expiresIn - 300) * 1000))
 }
 
+// 백그라운드 무음 재발급 타이머 — 탭이 열려 있는 동안 세션이 끊기지 않게 한다.
+let refreshTimer: ReturnType<typeof setTimeout> | null = null
+
+/**
+ * 토큰 만료 전에 백그라운드에서 무음 재발급(prompt:'none')을 예약한다.
+ * 매 발급 성공 시 호출되어 다음 갱신을 다시 예약한다.
+ * 실패해도 조용히 무시한다(다음 사용자 동작/탭 복귀에서 폴백).
+ */
+function scheduleProactiveRefresh(expiresIn = 3600) {
+  if (refreshTimer) clearTimeout(refreshTimer)
+  // 로컬 만료(만료 5분 전)보다 1분 더 일찍, 최소 30초 뒤에 갱신 시도
+  const delayMs = Math.max((expiresIn - 360) * 1000, 30_000)
+  refreshTimer = setTimeout(() => {
+    acquireToken('none').catch(() => {})
+  }, delayMs)
+}
+
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(TOKEN_EXPIRY_KEY)
@@ -109,6 +126,7 @@ async function acquireToken(prompt: 'none' | 'consent'): Promise<string> {
           return
         }
         saveToken(response.access_token, response.expires_in)
+        scheduleProactiveRefresh(response.expires_in ?? 3600)
         resolve(response.access_token)
       },
       // prompt:'none' 실패(상호작용 필요 등)는 보통 여기로 전달된다.
@@ -144,4 +162,24 @@ export async function ensureAuth(): Promise<string> {
   } catch {
     return requestAuth()
   }
+}
+
+// ─── 세션 유지(keep-alive) ────────────────────────────────────────────────
+
+let keepAliveHooked = false
+
+/**
+ * 탭이 다시 보이거나 포커스를 받을 때, 토큰이 만료됐으면 무음 재발급을 시도한다.
+ * 백그라운드 setTimeout 쓰로틀링이나 절전 복귀로 예약 갱신을 놓친 경우를 보완한다.
+ * (앱 시작 시 1회 호출. 실패해도 조용히 무시 — 다음 Drive 동작에서 대화형 폴백.)
+ */
+export function enableSessionKeepAlive() {
+  if (keepAliveHooked) return
+  keepAliveHooked = true
+  const refreshIfStale = () => {
+    if (document.visibilityState !== 'visible') return
+    if (!getToken()) acquireToken('none').catch(() => {})
+  }
+  document.addEventListener('visibilitychange', refreshIfStale)
+  window.addEventListener('focus', refreshIfStale)
 }

@@ -1,12 +1,8 @@
 name: Deploy to Firebase Hosting
 
 on:
-  # ⚠️ push 자동 배포 일시 비활성화 (2026-06): firebase-tools 15.x 인증 스택
-  # (gaxios 7 / google-auth-library 10)이 러너에서 OAuth 토큰 교환 시 'Premature close'로
-  # 결정적 실패 → 매 push마다 빨간불. 그동안 배포는 로컬 수동(/deploy)으로 한다.
-  # 업스트림 수정 후 아래 push 트리거를 복원할 것. (수동 테스트는 workflow_dispatch로 가능)
-  # push:
-  #   branches: [main, master]
+  push:
+    branches: [main, master]
   workflow_dispatch:
 
 permissions:
@@ -55,23 +51,25 @@ jobs:
             console.log("SA OK:", j.client_email, "| project:", j.project_id);
           '
 
-      # ⚠️ 알려진 문제(2026-06): firebase-tools(15.x)의 인증 의존성 스택
-      # (gaxios 7.x / google-auth-library 10.x)이 GitHub 러너에서 OAuth 토큰 교환 시
-      # 'Premature close'로 결정적으로 실패한다. (gcloud/curl/구 스택은 정상 — 업스트림 회귀로 추정.)
-      # 재시도로도 회피 불가. 업스트림 수정 전까지는 로컬 수동 배포(`/deploy`)로 대체한다.
-      - name: Deploy to Firebase Hosting (retry on transient errors)
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gac.json
+      # 인증은 gcloud(러너에서 토큰 교환 검증됨)로 액세스 토큰을 받고, 배포는 Hosting REST API를
+      # native fetch로 직접 호출하는 스크립트로 한다. firebase-tools 15.x의 인증 스택
+      # (gaxios 7 / google-auth-library 10)이 러너에서 'Premature close'로 결정적 실패하는
+      # 문제를 우회한다. 라우팅/헤더는 현재 라이브 버전 config를 복제해 보존한다.
+      - name: Authenticate (gcloud, service account)
+        run: gcloud auth activate-service-account --key-file="$RUNNER_TEMP/gac.json" --quiet
+
+      - name: Deploy to Firebase Hosting (REST API)
         run: |
-          for i in $(seq 1 3); do
+          for i in 1 2 3; do
             echo "::group::Deploy attempt $i"
-            if npx -y firebase-tools@15.8.0 deploy --only hosting --project rhwp-studio --non-interactive; then
+            TOKEN=$(gcloud auth print-access-token) || { echo "토큰 발급 실패"; echo "::endgroup::"; sleep 15; continue; }
+            if GOOGLE_OAUTH_ACCESS_TOKEN="$TOKEN" node scripts/deploy-hosting.mjs; then
               echo "::endgroup::"
               exit 0
             fi
             echo "::endgroup::"
-            echo "Attempt $i 실패 — 20초 후 재시도"
-            sleep 20
+            echo "Attempt $i 실패 — 15초 후 재시도"
+            sleep 15
           done
-          echo "::error::배포 실패 — firebase-tools 인증 스택 'Premature close' 회귀로 추정. 로컬 수동 배포로 대체하세요."
+          echo "::error::배포 실패"
           exit 1

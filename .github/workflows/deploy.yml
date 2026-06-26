@@ -70,6 +70,23 @@ jobs:
           sudo ip link set dev "$IFACE" mtu 1400
           echo "after: $(cat /sys/class/net/$IFACE/mtu)"
 
+      # 진단: 토큰 엔드포인트 도달성을 curl(네트워크) vs node fetch(undici)로 비교한다.
+      - name: Connectivity diagnostic (token endpoint)
+        run: |
+          echo "--- curl (network level) ---"
+          curl -sS -m 30 -o /dev/null -X POST \
+            -w "curl http_code=%{http_code} time=%{time_total}s remote=%{remote_ip}\n" \
+            https://www.googleapis.com/oauth2/v4/token || echo "curl FAILED rc=$?"
+          echo "--- node fetch (undici level) ---"
+          node -e '
+            (async () => {
+              try {
+                const r = await fetch("https://www.googleapis.com/oauth2/v4/token", { method: "POST" });
+                console.log("node fetch status:", r.status, "len:", (await r.text()).length);
+              } catch (e) { console.log("node fetch FAILED:", e.message, e.cause && e.cause.message); }
+            })();
+          '
+
       # MTU 우회 후에도 남는 일시적 실패만 흡수한다(4회, 점증 대기).
       - name: Deploy to Firebase Hosting (retry on transient errors)
         env:

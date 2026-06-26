@@ -67,7 +67,7 @@ jobs:
         run: |
           IFACE=$(ip route show default | awk '{print $5; exit}')
           echo "default iface: $IFACE (before: $(cat /sys/class/net/$IFACE/mtu))"
-          sudo ip link set dev "$IFACE" mtu 1400
+          sudo ip link set dev "$IFACE" mtu 1280
           echo "after: $(cat /sys/class/net/$IFACE/mtu)"
 
       # 진단: 토큰 엔드포인트 도달성을 curl(네트워크) vs node fetch(undici)로 비교한다.

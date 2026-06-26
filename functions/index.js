@@ -19,7 +19,7 @@
  */
 
 const { onRequest } = require('firebase-functions/v2/https');
-const { defineSecret, defineString } = require('firebase-functions/params');
+const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
 const Sentry = require('@sentry/node');
@@ -27,10 +27,9 @@ const Sentry = require('@sentry/node');
 admin.initializeApp();
 const db = admin.firestore();
 
-// Sentry DSN 은 functions/.env 의 SENTRY_DSN 에서 읽는다(미설정 시 비활성).
+// Sentry DSN 은 functions/.env 의 SENTRY_DSN 에서 읽는다(런타임 env 로 주입됨, 미설정 시 비활성).
 // PII(쿠키·헤더·IP) 는 수집하지 않는다 → __session 쿠키 유출 방지.
-const SENTRY_DSN = defineString('SENTRY_DSN');
-const sentryDsn = SENTRY_DSN.value();
+const sentryDsn = process.env.SENTRY_DSN;
 if (sentryDsn) {
   Sentry.init({
     dsn: sentryDsn,

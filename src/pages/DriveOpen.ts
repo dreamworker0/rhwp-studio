@@ -76,18 +76,27 @@ export async function renderDriveOpen(app: HTMLElement) {
 
 async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: string) {
   renderLoading(app, 'Drive에서 파일을 불러오는 중...')
-  // 스피너 DOM 재생성 없이 메시지 텍스트만 갱신(깜빡임 방지)
+  // 스피너 DOM 재생성 없이 메시지/막대만 갱신(깜빡임 방지)
   const loadingMsg = app.querySelector('.loading-msg')
+  // 진행률 막대 — 다운로드 크기를 알 때만 표시(기본 숨김)
+  const loadingScreen = app.querySelector('.loading-screen')
+  const progressBar = document.createElement('div')
+  progressBar.className = 'progress-bar'
+  progressBar.style.display = 'none'
+  progressBar.innerHTML = '<div class="progress-fill"></div>'
+  const progressFill = progressBar.firstElementChild as HTMLElement
+  if (loadingScreen && loadingMsg) loadingScreen.insertBefore(progressBar, loadingMsg)
 
   try {
     const [meta, data] = await Promise.all([
       getFileMeta(fileId),
       downloadFile(fileId, (loaded, total) => {
-        if (!loadingMsg) return
         if (total) {
           const pct = Math.floor((loaded / total) * 100)
-          loadingMsg.textContent = `Drive에서 불러오는 중... ${pct}%`
-        } else {
+          progressBar.style.display = ''
+          progressFill.style.width = `${pct}%`
+          if (loadingMsg) loadingMsg.textContent = `Drive에서 불러오는 중... ${pct}%`
+        } else if (loadingMsg) {
           const mb = (loaded / (1024 * 1024)).toFixed(1)
           loadingMsg.textContent = `Drive에서 불러오는 중... ${mb}MB`
         }

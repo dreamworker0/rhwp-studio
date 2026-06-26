@@ -56,10 +56,13 @@ jobs:
             catch (e) { console.error("::error::private_key PEM 손상 — 시크릿 기록 과정에서 키가 깨졌습니다: " + e.message); process.exit(1); }
             console.log("SA OK:", j.client_email, "| project:", j.project_id);
           '
-          echo "--- 실제 인증 probe (projects:list) ---"
-          npx -y firebase-tools@15.8.0 projects:list --non-interactive >/dev/null \
-            && echo "AUTH OK" \
-            || { echo "::error::firebase 인증 실패 (자격증명 형식은 정상이나 인증 거부)"; exit 1; }
+          echo "--- 실제 인증 probe (projects:list --debug) ---"
+          set +e
+          OUT=$(npx -y firebase-tools@15.8.0 projects:list --non-interactive --debug 2>&1)
+          CODE=$?
+          echo "$OUT" | grep -iE "invalid_grant|JWT|signature|access_denied|token|unauthorized|forbidden|clock|expired|authenticate|error_description|reqwest|ENOTFOUND|ETIMEDOUT|account" | head -25
+          if [ $CODE -ne 0 ]; then echo "::error::firebase 인증 실패 (exit $CODE)"; exit 1; fi
+          echo "AUTH OK"
 
       # 'Failed to authenticate'(자격증명 문제)는 위 검증 단계에서 이미 걸러진다.
       # 재시도는 'Premature close'(일시적 네트워크 오류) 같은 진짜 일시적 실패만 흡수한다.

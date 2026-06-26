@@ -59,16 +59,22 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gac.json
 
       # 'Failed to authenticate'(자격증명 문제)는 위 검증 단계에서 이미 걸러진다.
-      # 여기 재시도는 OAuth 토큰 교환 중 'Premature close'(일시적 네트워크 오류) 같은
-      # 진짜 일시적 실패만 대기 후 흡수한다.
+      # 재시도는 'Premature close'(일시적 네트워크 오류) 같은 진짜 일시적 실패만 흡수한다.
+      # run: 스텝이라 step-level env(GOOGLE_APPLICATION_CREDENTIALS)가 명령에 확실히 전달된다.
+      # (이전엔 nick-fields/retry 액션이 spawn한 명령에 env가 전달되지 않아 인증 실패했음.)
       - name: Deploy to Firebase Hosting (retry on transient errors)
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          retry_wait_seconds: 20
-          # firebase-tools는 재현성을 위해 고정. (15.8.0/최신 모두 동일한 일시적 오류를
-          # 겪었으므로 버전이 원인은 아님 — 핀은 빌드 재현성 목적.)
-          command: npx -y firebase-tools@15.8.0 deploy --only hosting --project rhwp-studio --non-interactive
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gac.json
+        run: |
+          for i in 1 2 3; do
+            echo "::group::Deploy attempt $i"
+            if npx -y firebase-tools@15.8.0 deploy --only hosting --project rhwp-studio --non-interactive; then
+              echo "::endgroup::"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "Attempt $i 실패 — 20초 후 재시도"
+            sleep 20
+          done
+          echo "::error::배포 3회 모두 실패"
+          exit 1

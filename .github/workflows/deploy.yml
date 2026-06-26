@@ -60,31 +60,23 @@ jobs:
             catch (e) { console.error("::error::private_key PEM 손상 — 시크릿 기록 과정에서 키가 깨졌습니다: " + e.message); process.exit(1); }
             console.log("SA OK:", j.client_email, "| project:", j.project_id);
           '
-          echo "--- 실제 인증 probe (projects:list --debug) ---"
-          set +e
-          OUT=$(npx -y firebase-tools@15.8.0 projects:list --non-interactive --debug 2>&1)
-          CODE=$?
-          echo "$OUT" | grep -iE "invalid_grant|JWT|signature|access_denied|token|unauthorized|forbidden|clock|expired|authenticate|error_description|reqwest|ENOTFOUND|ETIMEDOUT|account" | head -25
-          if [ $CODE -ne 0 ]; then echo "::error::firebase 인증 실패 (exit $CODE)"; exit 1; fi
-          echo "AUTH OK"
 
-      # 'Failed to authenticate'(자격증명 문제)는 위 검증 단계에서 이미 걸러진다.
-      # 재시도는 'Premature close'(일시적 네트워크 오류) 같은 진짜 일시적 실패만 흡수한다.
-      # run: 스텝이라 step-level env(GOOGLE_APPLICATION_CREDENTIALS)가 명령에 확실히 전달된다.
-      # (이전엔 nick-fields/retry 액션이 spawn한 명령에 env가 전달되지 않아 인증 실패했음.)
+      # googleapis OAuth 토큰 교환이 'Premature close'로 자주 끊긴다(러너↔Google 네트워크).
+      # 결정적이지 않고 플레이키하므로 충분히 끈질기게 재시도해 흡수한다(8회, 점증 대기).
       - name: Deploy to Firebase Hosting (retry on transient errors)
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gac.json
         run: |
-          for i in 1 2 3; do
+          for i in $(seq 1 8); do
             echo "::group::Deploy attempt $i"
             if npx -y firebase-tools@15.8.0 deploy --only hosting --project rhwp-studio --non-interactive; then
               echo "::endgroup::"
               exit 0
             fi
             echo "::endgroup::"
-            echo "Attempt $i 실패 — 20초 후 재시도"
-            sleep 20
+            wait=$((i*10))
+            echo "Attempt $i 실패 — ${wait}초 후 재시도"
+            sleep $wait
           done
-          echo "::error::배포 3회 모두 실패"
+          echo "::error::배포 8회 모두 실패 — 일시적 네트워크가 아니라 구조적 문제(WIF 전환 필요)일 수 있음"
           exit 1

@@ -61,13 +61,21 @@ jobs:
             console.log("SA OK:", j.client_email, "| project:", j.project_id);
           '
 
-      # googleapis OAuth 토큰 교환이 'Premature close'로 자주 끊긴다(러너↔Google 네트워크).
-      # 결정적이지 않고 플레이키하므로 충분히 끈질기게 재시도해 흡수한다(8회, 점증 대기).
+      # 'Premature close'(googleapis 응답이 중간에 잘림)는 MTU 불일치로 큰 패킷이
+      # 드롭될 때 발생한다(러너/터널 환경의 알려진 이슈). MTU를 낮춰 우회한다.
+      - name: Lower MTU (googleapis 'Premature close' 우회)
+        run: |
+          IFACE=$(ip route show default | awk '{print $5; exit}')
+          echo "default iface: $IFACE (before: $(cat /sys/class/net/$IFACE/mtu))"
+          sudo ip link set dev "$IFACE" mtu 1400
+          echo "after: $(cat /sys/class/net/$IFACE/mtu)"
+
+      # MTU 우회 후에도 남는 일시적 실패만 흡수한다(4회, 점증 대기).
       - name: Deploy to Firebase Hosting (retry on transient errors)
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gac.json
         run: |
-          for i in $(seq 1 8); do
+          for i in $(seq 1 4); do
             echo "::group::Deploy attempt $i"
             if npx -y firebase-tools@15.8.0 deploy --only hosting --project rhwp-studio --non-interactive; then
               echo "::endgroup::"
@@ -78,5 +86,5 @@ jobs:
             echo "Attempt $i 실패 — ${wait}초 후 재시도"
             sleep $wait
           done
-          echo "::error::배포 8회 모두 실패 — 일시적 네트워크가 아니라 구조적 문제(WIF 전환 필요)일 수 있음"
+          echo "::error::배포 4회 모두 실패 — 일시적 네트워크가 아니라 구조적 문제(WIF 전환 필요)일 수 있음"
           exit 1

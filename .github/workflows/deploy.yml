@@ -11,10 +11,6 @@ permissions:
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
-    # GitHub 러너는 googleapis(OAuth 토큰 엔드포인트)로의 IPv6 연결에서 undici가
-    # 'Premature close'를 내며 인증이 결정적으로 실패한다. IPv4를 우선 사용해 우회한다.
-    env:
-      NODE_OPTIONS: --dns-result-order=ipv4first
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -36,69 +32,42 @@ jobs:
           VITE_GOOGLE_CLIENT_ID: 292079787292-qmjcruc73ogvoffnf63f28nj7ov30csn.apps.googleusercontent.com
 
       # 서비스계정 키를 임시 파일로 기록 → firebase-tools가 GOOGLE_APPLICATION_CREDENTIALS로 인증.
-      # 시크릿을 env로 받아 printf로 그대로 기록한다(텍스트 치환/heredoc보다 안전 — 들여쓰기·따옴표·
-      # 줄바꿈 손상 없음). 이전 heredoc 방식은 JSON은 유효하나 private_key PEM이 깨질 수 있었다.
+      # 시크릿을 env로 받아 printf로 그대로 기록(텍스트 치환/heredoc보다 안전 — 들여쓰기·따옴표·줄바꿈 손상 없음).
       - name: Prepare service account
         env:
           SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: printf '%s' "$SA" > "$RUNNER_TEMP/gac.json"
 
-      # 배포 전에 (1) JSON 구조 (2) private_key PEM 무결성 (3) 실제 인증까지 확인해
-      # 'Failed to authenticate' 의 모호한 실패를 fail-fast로 명확히 드러낸다. (키 내용 미노출)
+      # 배포 전 자격증명 유효성(JSON 구조 + private_key PEM 무결성)을 fail-fast로 확인. (키 미노출)
       - name: Validate service account credentials
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gac.json
         run: |
           node -e '
             const fs = require("fs"), crypto = require("crypto");
-            const p = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-            let j;
-            try { j = JSON.parse(fs.readFileSync(p, "utf8")); }
-            catch (e) { console.error("::error::gac.json 파싱 실패: " + e.message); process.exit(1); }
-            if (j.type !== "service_account" || !j.client_email) { console.error("::error::SA 키 형식 오류 (client_email 누락)"); process.exit(1); }
-            try { crypto.createPrivateKey(j.private_key); }
-            catch (e) { console.error("::error::private_key PEM 손상 — 시크릿 기록 과정에서 키가 깨졌습니다: " + e.message); process.exit(1); }
+            const j = JSON.parse(fs.readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS, "utf8"));
+            if (j.type !== "service_account" || !j.client_email) { console.error("::error::SA 키 형식 오류"); process.exit(1); }
+            crypto.createPrivateKey(j.private_key);
             console.log("SA OK:", j.client_email, "| project:", j.project_id);
           '
 
-      # 'Premature close'(googleapis 응답이 중간에 잘림)는 MTU 불일치로 큰 패킷이
-      # 드롭될 때 발생한다(러너/터널 환경의 알려진 이슈). MTU를 낮춰 우회한다.
-      - name: Lower MTU (googleapis 'Premature close' 우회)
-        run: |
-          IFACE=$(ip route show default | awk '{print $5; exit}')
-          echo "default iface: $IFACE (before: $(cat /sys/class/net/$IFACE/mtu))"
-          sudo ip link set dev "$IFACE" mtu 1280
-          echo "after: $(cat /sys/class/net/$IFACE/mtu)"
-
-      # 진단: 실제 토큰 교환을 (a) gcloud(Python 스택) (b) firebase-tools 의존성 버전으로 가른다.
-      - name: Auth-stack diagnostic
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gac.json
-        run: |
-          echo "--- gcloud 토큰 교환 (Python 스택) ---"
-          gcloud auth activate-service-account --key-file="$GOOGLE_APPLICATION_CREDENTIALS" >/dev/null 2>&1 || echo "activate failed"
-          if gcloud auth print-access-token >/dev/null 2>&1; then echo "gcloud TOKEN OK (Python 스택은 정상)"; else echo "gcloud TOKEN FAILED (엔드포인트 자체 문제)"; fi
-          echo "--- firebase-tools 가 받은 의존성 버전 ---"
-          npx -y firebase-tools@13 --version >/dev/null 2>&1 || true
-          find "$HOME/.npm/_npx" -name package.json 2>/dev/null \
-            | xargs -r grep -l '"name": *"\(gaxios\|gtoken\|google-auth-library\|node-fetch\)"' 2>/dev/null \
-            | xargs -r -I{} node -e 'const j=require("{}");console.log(j.name,j.version)' 2>/dev/null | sort -u
-
-      # MTU 우회 후에도 남는 일시적 실패만 흡수한다(4회, 점증 대기).
+      # ⚠️ 알려진 문제(2026-06): firebase-tools(15.x)의 인증 의존성 스택
+      # (gaxios 7.x / google-auth-library 10.x)이 GitHub 러너에서 OAuth 토큰 교환 시
+      # 'Premature close'로 결정적으로 실패한다. (gcloud/curl/구 스택은 정상 — 업스트림 회귀로 추정.)
+      # 재시도로도 회피 불가. 업스트림 수정 전까지는 로컬 수동 배포(`/deploy`)로 대체한다.
       - name: Deploy to Firebase Hosting (retry on transient errors)
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gac.json
         run: |
-          for i in $(seq 1 4); do
+          for i in $(seq 1 3); do
             echo "::group::Deploy attempt $i"
-            if npx -y firebase-tools@13 deploy --only hosting --project rhwp-studio --non-interactive; then
+            if npx -y firebase-tools@15.8.0 deploy --only hosting --project rhwp-studio --non-interactive; then
               echo "::endgroup::"
               exit 0
             fi
             echo "::endgroup::"
-            wait=$((i*10))
-            echo "Attempt $i 실패 — ${wait}초 후 재시도"
-            sleep $wait
+            echo "Attempt $i 실패 — 20초 후 재시도"
+            sleep 20
           done
-          echo "::error::배포 4회 모두 실패 — 일시적 네트워크가 아니라 구조적 문제(WIF 전환 필요)일 수 있음"
+          echo "::error::배포 실패 — firebase-tools 인증 스택 'Premature close' 회귀로 추정. 로컬 수동 배포로 대체하세요."
           exit 1

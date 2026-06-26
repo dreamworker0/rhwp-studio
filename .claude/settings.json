@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "permissions": {
+    "allow": [
+      "Bash(node --check *)",
+      "Bash(git add *)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(npm run build*)",
+      "Bash(npm ci)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/secret-scan.mjs\"",
+            "shell": "bash",
+            "if": "Bash(git *)",
+            "timeout": 30,
+            "statusMessage": "시크릿 스캔 중..."
+          }
+        ]
+      }
+    ]
+  }
+}

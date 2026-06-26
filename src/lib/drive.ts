@@ -19,16 +19,20 @@ async function authHeaders(): Promise<HeadersInit> {
   return { Authorization: `Bearer ${token}` }
 }
 
+// 응답 실패 시 본문을 로깅하고 일관된 메시지로 throw (Drive 호출 공통 처리).
+async function ensureOk(res: Response, logLabel: string, errLabel: string): Promise<void> {
+  if (res.ok) return
+  const body = await res.text()
+  console.error(logLabel, res.status, body)
+  throw new Error(`${errLabel} (${res.status}): ${parseErrorMessage(body)}`)
+}
+
 export async function getFileMeta(fileId: string): Promise<DriveFileMeta> {
   const res = await fetch(
     `${DRIVE_API}/files/${fileId}?fields=id,name,mimeType,size,capabilities&supportsAllDrives=true`,
     { headers: await authHeaders() },
   )
-  if (!res.ok) {
-    const body = await res.text()
-    console.error('Drive API getFileMeta error:', res.status, body)
-    throw new Error(`Drive API 오류 (${res.status}): ${parseErrorMessage(body)}`)
-  }
+  await ensureOk(res, 'Drive API getFileMeta error:', 'Drive API 오류')
   return res.json()
 }
 
@@ -45,11 +49,7 @@ export async function downloadFile(
     `${DRIVE_API}/files/${fileId}?alt=media&supportsAllDrives=true`,
     { headers: await authHeaders() },
   )
-  if (!res.ok) {
-    const body = await res.text()
-    console.error('Drive API downloadFile error:', res.status, body)
-    throw new Error(`Drive API 오류 (${res.status}): ${parseErrorMessage(body)}`)
-  }
+  await ensureOk(res, 'Drive API downloadFile error:', 'Drive API 오류')
 
   // 진행률이 필요 없거나 스트림을 쓸 수 없으면 단순 경로
   if (!onProgress || !res.body) {
@@ -61,12 +61,16 @@ export async function downloadFile(
   const reader = res.body.getReader()
   const chunks: Uint8Array[] = []
   let loaded = 0
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    chunks.push(value)
-    loaded += value.length
-    onProgress(loaded, total)
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      chunks.push(value)
+      loaded += value.length
+      onProgress(loaded, total)
+    }
+  } finally {
+    reader.releaseLock() // 중간에 throw 돼도 스트림 락 해제
   }
 
   // 청크 결합 → ArrayBuffer
@@ -121,13 +125,6 @@ export async function uploadFile(
   mimeType = 'application/x-hwp',
   fileId?: string,
 ): Promise<string> {
-  // ArrayBuffer 또는 Uint8Array 둘 다 허용
-  // Uint8Array.slice()로 생성된 경우 .buffer가 원본 전체를 참조할 수 있으므로
-  // byteOffset/byteLength 기준으로 정확한 범위만 추출
-  const buffer = data instanceof Uint8Array
-    ? data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)
-    : data
-
   // supportsAllDrives=true: 공유 드라이브 파일 포함, 일반 드라이브도 안정성↑
   const url = fileId
     ? `${UPLOAD_API}/files/${fileId}?uploadType=multipart&supportsAllDrives=true`
@@ -138,7 +135,9 @@ export async function uploadFile(
     const headers = await authHeaders()
     const form = new FormData()
     form.append('metadata', new Blob([JSON.stringify({ name, mimeType })], { type: 'application/json' }))
-    form.append('file', new Blob([buffer as ArrayBuffer], { type: mimeType }), name)
+    // Blob 은 ArrayBuffer/Uint8Array(byteOffset·byteLength 존중)를 그대로 받으므로 추가 복사 불필요.
+    // (cast: lib 의 Uint8Array<ArrayBufferLike> 제네릭이 BlobPart 와 안 맞아서일 뿐, 런타임 안전)
+    form.append('file', new Blob([data as BlobPart], { type: mimeType }), name)
     return fetch(url, {
       method: fileId ? 'PATCH' : 'POST',
       headers,
@@ -161,11 +160,7 @@ export async function uploadFile(
     }
   }
 
-  if (!res.ok) {
-    const body = await res.text()
-    console.error(`Drive 업로드 오류 (${res.status}):`, body)
-    throw new Error(`Drive 업로드 오류 (${res.status}): ${parseErrorMessage(body)}`)
-  }
+  await ensureOk(res, 'Drive 업로드 오류:', 'Drive 업로드 오류')
 
   const json = await res.json()
   return json.id

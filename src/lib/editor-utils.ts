@@ -152,7 +152,12 @@ export async function loadFileDirectly(
 
         window.addEventListener('message', handler)
 
-        const cw = iframe.contentWindow!
+        const cw = iframe.contentWindow
+        if (!cw) {
+          cleanup()
+          reject(new Error('에디터 프레임을 찾을 수 없습니다.'))
+          return
+        }
         cw.postMessage(
           { type: 'rhwp-request', id: loadId, method: 'loadFile', params: { data: bytes, fileName } },
           location.origin,

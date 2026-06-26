@@ -201,12 +201,6 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
 
       try {
         const fileName = meta.name
-        // 디버그: data 상태 확인
-        console.log(`[Download] data type: ${Object.prototype.toString.call(data)}`)
-        console.log(`[Download] data.byteLength: ${(data as ArrayBuffer).byteLength}`)
-        const debugView = new Uint8Array(data as ArrayBuffer, 0, Math.min(16, (data as ArrayBuffer).byteLength))
-        console.log(`[Download] 첫 16바이트:`, Array.from(debugView).map(b => b.toString(16).padStart(2, '0')).join(' '))
-        console.log(`[Download] meta.mimeType: ${meta.mimeType}, fileName: ${fileName}`)
 
         // 원본 Drive 데이터를 그대로 사용 (WASM export는 손상 가능성이 있으므로 사용하지 않음)
         const blob = new Blob([data], { type: meta.mimeType || 'application/x-hwp' })
@@ -221,20 +215,9 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
             // ArrayBuffer를 직접 기록 (Blob 변환 없이)
             await writable.write(data)
             await writable.close()
-
-            // 검증: 저장된 파일을 다시 읽어서 확인
-            const savedFile = await handle.getFile()
-            const savedBuffer = await savedFile.arrayBuffer()
-            const savedView = new Uint8Array(savedBuffer, 0, Math.min(8, savedBuffer.byteLength))
-            console.log(`[Download] 저장 완료: ${fileName}`)
-            console.log(`[Download] 원본 크기: ${(data as ArrayBuffer).byteLength}, 저장 크기: ${savedBuffer.byteLength}`)
-            console.log(`[Download] 저장 파일 첫 8바이트:`, Array.from(savedView).map(b => b.toString(16).padStart(2, '0')).join(' '))
             return
           } catch (pickerErr: any) {
-            if (pickerErr?.name === 'AbortError') {
-              console.log('[Download] 사용자가 저장을 취소했습니다.')
-              return
-            }
+            if (pickerErr?.name === 'AbortError') return
             console.warn('[Download] showSaveFilePicker 실패, fallback 사용:', pickerErr)
           }
         }
@@ -284,10 +267,11 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
       // 저장 성공 시 dirty 해제
       setupSaveListener(meta.name, meta.mimeType, fileId, statusText, () => { isDirty = false })
 
-      // 탭 닫기(X) 시 저장 경고
+      // 탭 닫기(X) 시 저장 경고 — 일부 브라우저는 returnValue 설정이 있어야 경고가 뜬다.
       const beforeUnloadHandler = (e: BeforeUnloadEvent) => {
         if (isDirty) {
           e.preventDefault()
+          e.returnValue = ''
         }
       }
       window.addEventListener('beforeunload', beforeUnloadHandler)

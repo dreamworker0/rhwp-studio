@@ -91,6 +91,12 @@ function safeReturnPath(p) {
   return typeof p === 'string' && p.startsWith('/') && !p.startsWith('//') ? p : '/';
 }
 
+// Firestore 문서 ID(state/sid)는 hex 고정 길이로 생성된다.
+// 비정상 입력으로 잘못된 경로/500 이 나지 않도록 사용 전에 형식을 검증한다.
+function isHexId(s, len) {
+  return typeof s === 'string' && s.length === len && /^[a-f0-9]+$/.test(s);
+}
+
 function decodeJwtSub(idToken) {
   try {
     const payload = JSON.parse(
@@ -147,8 +153,13 @@ async function handleLogin(req, res) {
 }
 
 async function handleCallback(req, res) {
+  // 사용자가 동의를 거부하면 Google 이 ?error=...(code 없음)로 돌려보낸다 → 홈으로 안내.
+  if (req.query.error) {
+    res.redirect(302, APP_ORIGIN + '/?login=cancelled');
+    return;
+  }
   const state = String(req.query.state || '');
-  if (!req.query.code || !state) {
+  if (!req.query.code || !isHexId(state, 32)) {
     res.status(400).send('잘못된 OAuth 요청');
     return;
   }
@@ -210,13 +221,20 @@ async function handleCallback(req, res) {
 async function handleDriveToken(req, res) {
   const cookies = parseCookies(req);
   const sid = cookies[SESSION_COOKIE];
-  if (!sid) {
+  if (!isHexId(sid, 48)) {
     res.status(401).json({ error: 'no_session' });
     return;
   }
   const sess = await db.collection('driveSessions').doc(sid).get();
   if (!sess.exists) {
     res.status(401).json({ error: 'invalid_session' });
+    return;
+  }
+  // 서버측 세션 만료 강제: sid 가 쿠키 Max-Age 와 무관하게 영구 사용되지 않도록.
+  const sessCreatedMs = sess.data().createdAt ? sess.data().createdAt.toMillis() : 0;
+  if (!sessCreatedMs || Date.now() - sessCreatedMs > SESSION_MAX_AGE * 1000) {
+    await sess.ref.delete().catch(() => {});
+    res.status(401).json({ error: 'session_expired' });
     return;
   }
   const { sub } = sess.data();
@@ -247,7 +265,7 @@ async function handleDriveToken(req, res) {
 async function handleLogout(req, res) {
   const cookies = parseCookies(req);
   const sid = cookies[SESSION_COOKIE];
-  if (sid) {
+  if (isHexId(sid, 48)) {
     await db.collection('driveSessions').doc(sid).delete().catch(() => {});
   }
   setCookie(res, SESSION_COOKIE, '', { clear: true });

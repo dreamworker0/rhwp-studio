@@ -1,9 +1,4 @@
-
-function escapeHtml(str: string): string {
-  const div = document.createElement('div')
-  div.textContent = str
-  return div.innerHTML
-}
+import { escapeHtml } from '../components/ui'
 
 export async function renderDriveNew(app: HTMLElement) {
   app.innerHTML = `

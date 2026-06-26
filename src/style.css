@@ -118,10 +118,6 @@ html, body {
   cursor: wait;
 }
 
-.btn-google-auth .google-icon {
-  flex-shrink: 0;
-}
-
 /* ─── Error Screen ─── */
 .error-screen {
   min-height: 100vh;
@@ -318,88 +314,6 @@ html, body {
 }
 
 .home-footer a:hover { text-decoration: underline; }
-
-/* ─── SVG Viewer ─── */
-.viewer-container {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  background: #1a1d24;
-}
-
-.viewer-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 24px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-  z-index: 10;
-}
-
-.viewer-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.viewer-brand .logo-badge {
-  width: 30px;
-  height: 30px;
-  font-size: 14px;
-}
-
-.viewer-filename {
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--text);
-  max-width: 400px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.viewer-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.viewer-page-count {
-  font-size: 13px;
-  color: var(--text-muted);
-  background: var(--surface2);
-  padding: 4px 12px;
-  border-radius: 6px;
-}
-
-.viewer-pages {
-  flex: 1;
-  overflow-y: auto;
-  padding: 32px 24px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 24px;
-  scroll-behavior: smooth;
-}
-
-.viewer-page {
-  background: #fff;
-  border-radius: 4px;
-  box-shadow:
-    0 2px 12px rgba(0,0,0,0.3),
-    0 0 0 1px rgba(255,255,255,0.05);
-  overflow: hidden;
-  max-width: 100%;
-}
-
-.viewer-page svg {
-  display: block;
-  max-width: 100%;
-  height: auto;
-}
 
 /* ─── Editor Container ─── */
 .editor-container {

@@ -39,10 +39,29 @@ jobs:
           ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           SA
 
-      # 배포 실패는 대부분 OAuth 토큰 교환 중 'Premature close'(일시적 네트워크 오류)다.
-      # FirebaseExtended 액션은 즉시 1회만 재시도해 같은 순간의 오류를 그대로 다시 맞는다.
-      # 대기 시간을 둔 재시도로 일시적 실패를 흡수한다. (CLI 직접 호출 → 구형 액션의 Node20 경고도 제거)
-      - name: Deploy to Firebase Hosting (retry on transient auth errors)
+      # 시크릿이 비었거나 깨졌으면(잘림/따옴표/base64) 여기서 즉시 명확한 에러로 중단한다.
+      # (키 내용은 노출하지 않고 client_email/project만 출력) — 'Failed to authenticate' 의
+      # 모호한 실패를 재시도로 흡수하려다 시간 낭비하는 것을 방지한다.
+      - name: Validate service account credentials
+        run: |
+          node -e '
+            const fs = require("fs");
+            const p = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+            let j;
+            try { j = JSON.parse(fs.readFileSync(p, "utf8")); }
+            catch (e) { console.error("::error::gac.json 파싱 실패 — FIREBASE_SERVICE_ACCOUNT 시크릿이 비었거나 깨졌습니다: " + e.message); process.exit(1); }
+            if (j.type !== "service_account" || !j.client_email || !String(j.private_key||"").includes("BEGIN PRIVATE KEY")) {
+              console.error("::error::유효한 서비스계정 키가 아닙니다 (client_email/private_key 누락)"); process.exit(1);
+            }
+            console.log("SA OK:", j.client_email, "| project:", j.project_id);
+          '
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gac.json
+
+      # 'Failed to authenticate'(자격증명 문제)는 위 검증 단계에서 이미 걸러진다.
+      # 여기 재시도는 OAuth 토큰 교환 중 'Premature close'(일시적 네트워크 오류) 같은
+      # 진짜 일시적 실패만 대기 후 흡수한다.
+      - name: Deploy to Firebase Hosting (retry on transient errors)
         uses: nick-fields/retry@v3
         with:
           timeout_minutes: 10

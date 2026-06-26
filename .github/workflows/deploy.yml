@@ -1,8 +1,12 @@
 name: Deploy to Firebase Hosting
 
 on:
-  push:
-    branches: [main, master]
+  # ⚠️ push 자동 배포 일시 비활성화 (2026-06): firebase-tools 15.x 인증 스택
+  # (gaxios 7 / google-auth-library 10)이 러너에서 OAuth 토큰 교환 시 'Premature close'로
+  # 결정적 실패 → 매 push마다 빨간불. 그동안 배포는 로컬 수동(/deploy)으로 한다.
+  # 업스트림 수정 후 아래 push 트리거를 복원할 것. (수동 테스트는 workflow_dispatch로 가능)
+  # push:
+  #   branches: [main, master]
   workflow_dispatch:
 
 permissions:

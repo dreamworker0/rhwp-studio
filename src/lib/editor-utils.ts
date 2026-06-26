@@ -104,6 +104,9 @@ export async function loadFileDirectly(
   const POLL_DELAY_MS = 1_500     // loadFile 전송 후 첫 pageCount 폴링까지 대기
   const POLL_INTERVAL_MS = 2_000  // 이후 pageCount 폴링 주기
   const bytes = new Uint8Array(data)
+  // 핸드셰이크 진단이 필요하면 콘솔에서: localStorage.setItem('rhwp_debug_load', '1')
+  let debug = false
+  try { debug = localStorage.getItem('rhwp_debug_load') === '1' } catch { /* 제한 환경 무시 */ }
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
@@ -129,20 +132,19 @@ export async function loadFileDirectly(
         function handler(e: MessageEvent) {
           const d = e.data
           if (!d || typeof d !== 'object' || d.type !== 'rhwp-response') return
-          const dt = (performance.now() - t0).toFixed(0)
-          const kind = d.id === loadId ? 'loadFile' : pollIds.has(d.id) ? 'pageCount' : 'NONE'
-          // 진단: 수신한 모든 rhwp-response를 기록 (origin/id 매칭/결과)
-          console.log(`[loadFile] +${dt}ms 응답 id=${d.id} origin=${e.origin} match=${kind} err=${d.error ?? ''} result=${JSON.stringify(d.result ?? null).slice(0, 80)}`)
-
           if (e.origin !== location.origin) return
+          if (debug) {
+            const kind = d.id === loadId ? 'loadFile' : pollIds.has(d.id) ? 'pageCount' : 'other'
+            console.log(`[loadFile] +${(performance.now() - t0).toFixed(0)}ms id=${d.id} match=${kind} err=${d.error ?? ''}`)
+          }
 
           if (d.id === loadId) {
             cleanup()
             if (d.error) reject(new Error(d.error))
             else resolve()
           } else if (pollIds.has(d.id) && !d.error && typeof d.result === 'number' && d.result > 0) {
-            // loadFile ack는 유실됐지만 문서는 실제로 로드됨 → 성공 처리
-            console.warn(`[loadFile] loadFile ack 유실 — pageCount=${d.result} 응답으로 성공 처리 (+${dt}ms)`)
+            // loadFile 응답이 유실돼도 문서는 실제로 로드됨 → pageCount 폴백으로 성공 처리
+            console.warn('[loadFile] loadFile 응답 미수신 — pageCount 폴백으로 로드 완료 확인')
             cleanup()
             resolve()
           }
@@ -151,7 +153,6 @@ export async function loadFileDirectly(
         window.addEventListener('message', handler)
 
         const cw = iframe.contentWindow!
-        console.log(`[loadFile] +0ms loadFile 전송 id=${loadId} bytes=${bytes.length} file=${fileName}`)
         cw.postMessage(
           { type: 'rhwp-request', id: loadId, method: 'loadFile', params: { data: bytes, fileName } },
           location.origin,
@@ -170,7 +171,6 @@ export async function loadFileDirectly(
       })
 
       if (statusEl) statusEl.textContent = ''
-      console.log('[DriveOpen] 파일 로드 성공')
       return
 
     } catch (err: unknown) {

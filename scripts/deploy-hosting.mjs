@@ -81,16 +81,21 @@ const required = pop.uploadRequiredHashes || []
 const uploadUrl = pop.uploadUrl
 console.log(`      업로드 필요 ${required.length}/${files.length}`)
 
-// 5) 필요한 파일 업로드
+// 5) 필요한 파일 업로드 (동시성 제한 풀로 병렬 업로드)
 console.log('[5/6] 업로드')
 const byHash = new Map(files.map(f => [f.hash, f]))
-let n = 0
-for (const h of required) {
-  const f = byHash.get(h)
-  if (!f) throw new Error(`해시 ${h}에 해당하는 파일 없음`)
-  await api(`${uploadUrl}/${h}`, { method: 'POST', raw: f.gz, headers: { 'Content-Type': 'application/octet-stream' } })
-  if (++n % 10 === 0 || n === required.length) console.log(`      ${n}/${required.length}`)
+const CONCURRENCY = 8
+let done = 0
+const queue = [...required]
+async function uploadWorker() {
+  for (let h = queue.pop(); h !== undefined; h = queue.pop()) {
+    const f = byHash.get(h)
+    if (!f) throw new Error(`해시 ${h}에 해당하는 파일 없음`)
+    await api(`${uploadUrl}/${h}`, { method: 'POST', raw: f.gz, headers: { 'Content-Type': 'application/octet-stream' } })
+    if (++done % 10 === 0 || done === required.length) console.log(`      ${done}/${required.length}`)
+  }
 }
+await Promise.all(Array.from({ length: Math.min(CONCURRENCY, required.length) }, uploadWorker))
 
 // 6) finalize + release
 console.log('[6/6] finalize + release')

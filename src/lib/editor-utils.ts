@@ -101,37 +101,72 @@ export async function loadFileDirectly(
   const TIMEOUT_MS = 60_000
   const MAX_RETRIES = 5
   const RETRY_DELAY_MS = 2_000
+  const POLL_DELAY_MS = 1_500     // loadFile 전송 후 첫 pageCount 폴링까지 대기
+  const POLL_INTERVAL_MS = 2_000  // 이후 pageCount 폴링 주기
   const bytes = new Uint8Array(data)
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
       await new Promise<void>((resolve, reject) => {
-        const msgId = Date.now() + Math.random()
+        const t0 = performance.now()
+        const loadId = Date.now() + Math.random()
+        const pollIds = new Set<number>()
+        let firstPoll: ReturnType<typeof setTimeout> | undefined
+        let pollTimer: ReturnType<typeof setInterval> | undefined
+
+        const cleanup = () => {
+          window.removeEventListener('message', handler)
+          clearTimeout(timer)
+          if (firstPoll) clearTimeout(firstPoll)
+          if (pollTimer) clearInterval(pollTimer)
+        }
 
         const timer = setTimeout(() => {
-          window.removeEventListener('message', handler)
+          cleanup()
           reject(new Error(`loadFile timeout (${TIMEOUT_MS / 1000}s)`))
         }, TIMEOUT_MS)
 
         function handler(e: MessageEvent) {
-          if (e.origin !== location.origin) return
           const d = e.data
-          if (d?.type === 'rhwp-response' && d.id === msgId) {
-            clearTimeout(timer)
-            window.removeEventListener('message', handler)
-            if (d.error) {
-              reject(new Error(d.error))
-            } else {
-              resolve()
-            }
+          if (!d || typeof d !== 'object' || d.type !== 'rhwp-response') return
+          const dt = (performance.now() - t0).toFixed(0)
+          const kind = d.id === loadId ? 'loadFile' : pollIds.has(d.id) ? 'pageCount' : 'NONE'
+          // 진단: 수신한 모든 rhwp-response를 기록 (origin/id 매칭/결과)
+          console.log(`[loadFile] +${dt}ms 응답 id=${d.id} origin=${e.origin} match=${kind} err=${d.error ?? ''} result=${JSON.stringify(d.result ?? null).slice(0, 80)}`)
+
+          if (e.origin !== location.origin) return
+
+          if (d.id === loadId) {
+            cleanup()
+            if (d.error) reject(new Error(d.error))
+            else resolve()
+          } else if (pollIds.has(d.id) && !d.error && typeof d.result === 'number' && d.result > 0) {
+            // loadFile ack는 유실됐지만 문서는 실제로 로드됨 → 성공 처리
+            console.warn(`[loadFile] loadFile ack 유실 — pageCount=${d.result} 응답으로 성공 처리 (+${dt}ms)`)
+            cleanup()
+            resolve()
           }
         }
 
         window.addEventListener('message', handler)
-        iframe.contentWindow!.postMessage(
-          { type: 'rhwp-request', id: msgId, method: 'loadFile', params: { data: bytes, fileName } },
+
+        const cw = iframe.contentWindow!
+        console.log(`[loadFile] +0ms loadFile 전송 id=${loadId} bytes=${bytes.length} file=${fileName}`)
+        cw.postMessage(
+          { type: 'rhwp-request', id: loadId, method: 'loadFile', params: { data: bytes, fileName } },
           location.origin,
         )
+
+        // 폴백: loadFile 응답이 도달하지 않는 경우, pageCount로 로딩 완료를 직접 확인
+        const sendPoll = () => {
+          const pid = Date.now() + Math.random()
+          pollIds.add(pid)
+          cw.postMessage({ type: 'rhwp-request', id: pid, method: 'pageCount', params: {} }, location.origin)
+        }
+        firstPoll = setTimeout(() => {
+          sendPoll()
+          pollTimer = setInterval(sendPoll, POLL_INTERVAL_MS)
+        }, POLL_DELAY_MS)
       })
 
       if (statusEl) statusEl.textContent = ''

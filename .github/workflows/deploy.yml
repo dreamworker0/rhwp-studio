@@ -32,31 +32,34 @@ jobs:
           VITE_GOOGLE_CLIENT_ID: 292079787292-qmjcruc73ogvoffnf63f28nj7ov30csn.apps.googleusercontent.com
 
       # 서비스계정 키를 임시 파일로 기록 → firebase-tools가 GOOGLE_APPLICATION_CREDENTIALS로 인증.
-      # 따옴표된 heredoc('SA')라 secret 내용은 셸 해석 없이 그대로(멀티라인/특수문자 포함) 안전하게 기록된다.
+      # 시크릿을 env로 받아 printf로 그대로 기록한다(텍스트 치환/heredoc보다 안전 — 들여쓰기·따옴표·
+      # 줄바꿈 손상 없음). 이전 heredoc 방식은 JSON은 유효하나 private_key PEM이 깨질 수 있었다.
       - name: Prepare service account
-        run: |
-          cat > "$RUNNER_TEMP/gac.json" <<'SA'
-          ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          SA
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: printf '%s' "$SA" > "$RUNNER_TEMP/gac.json"
 
-      # 시크릿이 비었거나 깨졌으면(잘림/따옴표/base64) 여기서 즉시 명확한 에러로 중단한다.
-      # (키 내용은 노출하지 않고 client_email/project만 출력) — 'Failed to authenticate' 의
-      # 모호한 실패를 재시도로 흡수하려다 시간 낭비하는 것을 방지한다.
+      # 배포 전에 (1) JSON 구조 (2) private_key PEM 무결성 (3) 실제 인증까지 확인해
+      # 'Failed to authenticate' 의 모호한 실패를 fail-fast로 명확히 드러낸다. (키 내용 미노출)
       - name: Validate service account credentials
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gac.json
         run: |
           node -e '
-            const fs = require("fs");
+            const fs = require("fs"), crypto = require("crypto");
             const p = process.env.GOOGLE_APPLICATION_CREDENTIALS;
             let j;
             try { j = JSON.parse(fs.readFileSync(p, "utf8")); }
-            catch (e) { console.error("::error::gac.json 파싱 실패 — FIREBASE_SERVICE_ACCOUNT 시크릿이 비었거나 깨졌습니다: " + e.message); process.exit(1); }
-            if (j.type !== "service_account" || !j.client_email || !String(j.private_key||"").includes("BEGIN PRIVATE KEY")) {
-              console.error("::error::유효한 서비스계정 키가 아닙니다 (client_email/private_key 누락)"); process.exit(1);
-            }
+            catch (e) { console.error("::error::gac.json 파싱 실패: " + e.message); process.exit(1); }
+            if (j.type !== "service_account" || !j.client_email) { console.error("::error::SA 키 형식 오류 (client_email 누락)"); process.exit(1); }
+            try { crypto.createPrivateKey(j.private_key); }
+            catch (e) { console.error("::error::private_key PEM 손상 — 시크릿 기록 과정에서 키가 깨졌습니다: " + e.message); process.exit(1); }
             console.log("SA OK:", j.client_email, "| project:", j.project_id);
           '
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gac.json
+          echo "--- 실제 인증 probe (projects:list) ---"
+          npx -y firebase-tools@15.8.0 projects:list --non-interactive >/dev/null \
+            && echo "AUTH OK" \
+            || { echo "::error::firebase 인증 실패 (자격증명 형식은 정상이나 인증 거부)"; exit 1; }
 
       # 'Failed to authenticate'(자격증명 문제)는 위 검증 단계에서 이미 걸러진다.
       # 재시도는 'Premature close'(일시적 네트워크 오류) 같은 진짜 일시적 실패만 흡수한다.

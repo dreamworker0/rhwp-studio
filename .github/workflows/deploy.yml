@@ -70,22 +70,19 @@ jobs:
           sudo ip link set dev "$IFACE" mtu 1280
           echo "after: $(cat /sys/class/net/$IFACE/mtu)"
 
-      # 진단: 토큰 엔드포인트 도달성을 curl(네트워크) vs node fetch(undici)로 비교한다.
-      - name: Connectivity diagnostic (token endpoint)
+      # 진단: 실제 토큰 교환을 (a) gcloud(Python 스택) (b) firebase-tools 의존성 버전으로 가른다.
+      - name: Auth-stack diagnostic
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gac.json
         run: |
-          echo "--- curl (network level) ---"
-          curl -sS -m 30 -o /dev/null -X POST \
-            -w "curl http_code=%{http_code} time=%{time_total}s remote=%{remote_ip}\n" \
-            https://www.googleapis.com/oauth2/v4/token || echo "curl FAILED rc=$?"
-          echo "--- node fetch (undici level) ---"
-          node -e '
-            (async () => {
-              try {
-                const r = await fetch("https://www.googleapis.com/oauth2/v4/token", { method: "POST" });
-                console.log("node fetch status:", r.status, "len:", (await r.text()).length);
-              } catch (e) { console.log("node fetch FAILED:", e.message, e.cause && e.cause.message); }
-            })();
-          '
+          echo "--- gcloud 토큰 교환 (Python 스택) ---"
+          gcloud auth activate-service-account --key-file="$GOOGLE_APPLICATION_CREDENTIALS" >/dev/null 2>&1 || echo "activate failed"
+          if gcloud auth print-access-token >/dev/null 2>&1; then echo "gcloud TOKEN OK (Python 스택은 정상)"; else echo "gcloud TOKEN FAILED (엔드포인트 자체 문제)"; fi
+          echo "--- firebase-tools 가 받은 의존성 버전 ---"
+          npx -y firebase-tools@15.8.0 --version >/dev/null 2>&1 || true
+          find "$HOME/.npm/_npx" -name package.json 2>/dev/null \
+            | xargs -r grep -l '"name": *"\(gaxios\|gtoken\|google-auth-library\|node-fetch\)"' 2>/dev/null \
+            | xargs -r -I{} node -e 'const j=require("{}");console.log(j.name,j.version)' 2>/dev/null | sort -u
 
       # MTU 우회 후에도 남는 일시적 실패만 흡수한다(4회, 점증 대기).
       - name: Deploy to Firebase Hosting (retry on transient errors)

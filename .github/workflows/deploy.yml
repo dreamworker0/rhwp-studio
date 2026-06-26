@@ -79,7 +79,7 @@ jobs:
           gcloud auth activate-service-account --key-file="$GOOGLE_APPLICATION_CREDENTIALS" >/dev/null 2>&1 || echo "activate failed"
           if gcloud auth print-access-token >/dev/null 2>&1; then echo "gcloud TOKEN OK (Python 스택은 정상)"; else echo "gcloud TOKEN FAILED (엔드포인트 자체 문제)"; fi
           echo "--- firebase-tools 가 받은 의존성 버전 ---"
-          npx -y firebase-tools@15.8.0 --version >/dev/null 2>&1 || true
+          npx -y firebase-tools@13 --version >/dev/null 2>&1 || true
           find "$HOME/.npm/_npx" -name package.json 2>/dev/null \
             | xargs -r grep -l '"name": *"\(gaxios\|gtoken\|google-auth-library\|node-fetch\)"' 2>/dev/null \
             | xargs -r -I{} node -e 'const j=require("{}");console.log(j.name,j.version)' 2>/dev/null | sort -u
@@ -91,7 +91,7 @@ jobs:
         run: |
           for i in $(seq 1 4); do
             echo "::group::Deploy attempt $i"
-            if npx -y firebase-tools@15.8.0 deploy --only hosting --project rhwp-studio --non-interactive; then
+            if npx -y firebase-tools@13 deploy --only hosting --project rhwp-studio --non-interactive; then
               echo "::endgroup::"
               exit 0
             fi

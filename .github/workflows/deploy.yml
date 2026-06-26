@@ -11,6 +11,10 @@ permissions:
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
+    # GitHub 러너는 googleapis(OAuth 토큰 엔드포인트)로의 IPv6 연결에서 undici가
+    # 'Premature close'를 내며 인증이 결정적으로 실패한다. IPv4를 우선 사용해 우회한다.
+    env:
+      NODE_OPTIONS: --dns-result-order=ipv4first
     steps:
       - name: Checkout
         uses: actions/checkout@v5

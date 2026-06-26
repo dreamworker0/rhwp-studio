@@ -45,9 +45,20 @@ export function clearTokenCache() {
   cached = null
 }
 
-/** Google 로그인으로 전체 화면 리다이렉트. 콜백 후 returnPath 로 복귀한다. */
-export function startLogin(returnPath: string = location.pathname + location.search): void {
-  location.href = `/api/auth/login?return=${encodeURIComponent(returnPath)}`
+/**
+ * Google 로그인으로 전체 화면 리다이렉트. 콜백 후 returnPath 로 복귀한다.
+ * - loginHint: Drive state.userId(=sub)를 넘기면 계정 선택 화면을 건너뛸 수 있다.
+ * - force: refresh_token 폐기 복구 등에서 동의/계정선택을 강제한다.
+ */
+export function startLogin(
+  returnPath: string = location.pathname + location.search,
+  opts: { loginHint?: string; force?: boolean } = {},
+): void {
+  const p = new URLSearchParams()
+  p.set('return', returnPath)
+  if (opts.loginHint) p.set('login_hint', opts.loginHint)
+  if (opts.force) p.set('force', '1')
+  location.href = `/api/auth/login?${p.toString()}`
 }
 
 /**

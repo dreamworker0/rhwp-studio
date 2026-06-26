@@ -1,3 +1,4 @@
+import { initSentry } from './lib/sentry'
 import { renderHome } from './pages/Home'
 import { renderDriveOpen } from './pages/DriveOpen'
 import { renderDriveNew } from './pages/DriveNew'
@@ -5,6 +6,8 @@ import { renderTerms } from './pages/Terms'
 import { renderPrivacy } from './pages/Privacy'
 import { renderSupport } from './pages/Support'
 import './style.css'
+
+initSentry()
 
 const app = document.getElementById('app')!
 const path = location.pathname

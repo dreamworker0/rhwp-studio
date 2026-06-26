@@ -3,17 +3,44 @@ import { getFileMeta, downloadFile, uploadFile } from '../lib/drive'
 import { renderEditorLayout, renderAuthPrompt, renderLoading, renderError } from '../components/ui'
 import { showHwpxToastIfNeeded, showViewerPermToast, setupSaveListener, loadFileDirectly } from '../lib/editor-utils'
 
+// 자동 로그인 리다이렉트가 1회를 넘지 않도록 하는 가드(탭 단위, 탭 닫으면 소멸).
+const AUTH_REDIRECT_FLAG = 'rhwp_auth_redirect_attempted'
+
+/**
+ * 세션이 없을 때의 재인증 처리.
+ * - 가드 미설정: 자동으로 Google 로그인으로 이동(중간 버튼 없음).
+ * - 가드 이미 설정(= 방금 로그인 후에도 세션 실패): 무한 루프 방지를 위해
+ *   수동 버튼으로 폴백(클릭 시 동의 강제).
+ */
+function attemptReauth(
+  app: HTMLElement,
+  returnPath: string,
+  opts: { loginHint?: string; force?: boolean },
+) {
+  if (sessionStorage.getItem(AUTH_REDIRECT_FLAG) === '1') {
+    sessionStorage.removeItem(AUTH_REDIRECT_FLAG)
+    renderAuthPrompt(app, () => startLogin(returnPath, { loginHint: opts.loginHint, force: true }))
+    return
+  }
+  sessionStorage.setItem(AUTH_REDIRECT_FLAG, '1')
+  renderLoading(app, 'Google 로그인으로 이동 중...')
+  startLogin(returnPath, opts)
+}
+
 export async function renderDriveOpen(app: HTMLElement) {
   const params = new URLSearchParams(location.search)
 
-  // Google Workspace Marketplace: ?state={"ids":["..."],"action":"open"}
+  // Google Workspace Marketplace: ?state={"ids":["..."],"action":"open","userId":"..."}
   // 자체 앱 링크: ?fileId=...
   let fileId: string | undefined
+  let loginHint: string | undefined
   const stateParam = params.get('state')
   if (stateParam) {
     try {
       const state = JSON.parse(stateParam)
       fileId = Array.isArray(state.ids) ? state.ids[0] : undefined
+      // Drive 가 넘기는 userId(=OAuth sub)를 login_hint 로 사용 → 계정 선택 건너뛰기
+      if (typeof state.userId === 'string' && state.userId) loginHint = state.userId
     } catch {
       // state 파싱 실패 시 무시
     }
@@ -27,29 +54,44 @@ export async function renderDriveOpen(app: HTMLElement) {
     return
   }
 
+  const returnPath = location.pathname + location.search
+
   // 백엔드 세션으로 토큰 확보 시도. 세션 쿠키가 살아 있으면(최대 60일) 창 없이 바로 연다.
   renderLoading(app, '인증 확인 중...')
   try {
     await getAccessToken()
-    await openFileFromDrive(app, fileId)
+    // 세션 유효 → 이전 자동 리다이렉트 가드 해제(다음 만료 시 깨끗한 1회 시도 보장)
+    sessionStorage.removeItem(AUTH_REDIRECT_FLAG)
+    await openFileFromDrive(app, fileId, loginHint)
     return
   } catch (e: unknown) {
     if (!(e instanceof NotAuthenticatedError)) {
       renderError(app, '인증 확인에 실패했습니다', e instanceof Error ? e.message : String(e))
       return
     }
-    // 세션 없음 → 로그인 버튼 표시. 클릭 시 Google 로그인으로 이동하고 완료 후 이 파일로 복귀한다.
+    // 세션 없음 → 자동으로 로그인 이동(완료 후 이 파일로 복귀).
   }
-  renderAuthPrompt(app, () => startLogin())
+  attemptReauth(app, returnPath, { loginHint, force: false })
 }
 
-async function openFileFromDrive(app: HTMLElement, fileId: string) {
+async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: string) {
   renderLoading(app, 'Drive에서 파일을 불러오는 중...')
+  // 스피너 DOM 재생성 없이 메시지 텍스트만 갱신(깜빡임 방지)
+  const loadingMsg = app.querySelector('.loading-msg')
 
   try {
     const [meta, data] = await Promise.all([
       getFileMeta(fileId),
-      downloadFile(fileId),
+      downloadFile(fileId, (loaded, total) => {
+        if (!loadingMsg) return
+        if (total) {
+          const pct = Math.floor((loaded / total) * 100)
+          loadingMsg.textContent = `Drive에서 불러오는 중... ${pct}%`
+        } else {
+          const mb = (loaded / (1024 * 1024)).toFixed(1)
+          loadingMsg.textContent = `Drive에서 불러오는 중... ${mb}MB`
+        }
+      }),
     ])
 
     const ext = meta.name.split('.').pop()?.toLowerCase()
@@ -244,17 +286,22 @@ async function openFileFromDrive(app: HTMLElement, fileId: string) {
 
     // 버퍼 데이터를 에디터에 주입
     const iframe = editor.element as HTMLIFrameElement
-    await loadFileDirectly(iframe, data, meta.name, statusText)
+    try {
+      await loadFileDirectly(iframe, data, meta.name, statusText)
+    } finally {
+      // 문서 로드가 끝나면(성공/실패 모두) 에디터 영역 로딩 오버레이 제거
+      document.getElementById('editor-loading')?.remove()
+    }
 
   } catch (e: unknown) {
     console.error(e)
     const msg = e instanceof Error ? e.message : String(e)
-    
-    // 401 권한 오류 시 토큰 캐시를 비우고 재로그인 유도
+
+    // 401 권한 오류 시 토큰 캐시를 비우고 재로그인 유도(동의 강제로 refresh_token 재발급)
     if (msg.includes('401') || msg.includes('UNAUTHENTICATED') || msg.toLowerCase().includes('invalid credentials')) {
       clearTokenCache()
       app.innerHTML = ''
-      renderAuthPrompt(app, () => startLogin())
+      attemptReauth(app, location.pathname + location.search, { loginHint, force: true })
       return
     }
 

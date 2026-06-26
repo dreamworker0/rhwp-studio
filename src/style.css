@@ -470,3 +470,16 @@ html, body {
   border: none;
 }
 
+/* 문서 로드 중 에디터 영역을 덮는 로딩 오버레이 (loadFileDirectly 완료 시 제거) */
+.editor-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  background: var(--bg);
+}
+

@@ -32,7 +32,15 @@ export async function getFileMeta(fileId: string): Promise<DriveFileMeta> {
   return res.json()
 }
 
-export async function downloadFile(fileId: string): Promise<ArrayBuffer> {
+/**
+ * 파일을 다운로드한다.
+ * onProgress 가 주어지면 스트림으로 읽으며 진행 상황을 알린다.
+ *   total 은 Content-Length(없으면 null — 진행률 % 대신 누적 바이트만 알 수 있음).
+ */
+export async function downloadFile(
+  fileId: string,
+  onProgress?: (loaded: number, total: number | null) => void,
+): Promise<ArrayBuffer> {
   const res = await fetch(
     `${DRIVE_API}/files/${fileId}?alt=media&supportsAllDrives=true`,
     { headers: await authHeaders() },
@@ -42,7 +50,33 @@ export async function downloadFile(fileId: string): Promise<ArrayBuffer> {
     console.error('Drive API downloadFile error:', res.status, body)
     throw new Error(`Drive API 오류 (${res.status}): ${parseErrorMessage(body)}`)
   }
-  return res.arrayBuffer()
+
+  // 진행률이 필요 없거나 스트림을 쓸 수 없으면 단순 경로
+  if (!onProgress || !res.body) {
+    return res.arrayBuffer()
+  }
+
+  const cl = res.headers.get('Content-Length')
+  const total = cl ? Number(cl) : null
+  const reader = res.body.getReader()
+  const chunks: Uint8Array[] = []
+  let loaded = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    chunks.push(value)
+    loaded += value.length
+    onProgress(loaded, total)
+  }
+
+  // 청크 결합 → ArrayBuffer
+  const out = new Uint8Array(loaded)
+  let offset = 0
+  for (const c of chunks) {
+    out.set(c, offset)
+    offset += c.length
+  }
+  return out.buffer
 }
 
 function parseErrorMessage(body: string): string {

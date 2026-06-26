@@ -18,7 +18,12 @@ export function renderEditorLayout(name: string, isHwpx: boolean): string {
           ${isHwpx ? '<button id="btn-download" class="btn btn-primary" style="background-color: #0d6efd; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: bold;">다운로드</button>' : ''}
         </div>
       </header>
-      <div id="editor-container" class="editor-main"></div>
+      <div id="editor-container" class="editor-main">
+        <div id="editor-loading" class="editor-loading">
+          <div class="spinner"></div>
+          <p class="loading-msg">문서를 여는 중...</p>
+        </div>
+      </div>
     </div>
     <div id="hwpx-toast" style="display:none; position:fixed; bottom:32px; left:50%; transform:translateX(-50%); background:rgba(33,37,41,0.92); color:#fff; padding:14px 28px; border-radius:10px; font-size:15px; z-index:9999; box-shadow:0 4px 16px rgba(0,0,0,0.3); transition:opacity 0.4s;">
       아직, hwpx 파일일 때는 미리보기만 가능합니다.

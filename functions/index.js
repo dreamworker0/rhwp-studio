@@ -19,12 +19,26 @@
  */
 
 const { onRequest } = require('firebase-functions/v2/https');
-const { defineSecret } = require('firebase-functions/params');
+const { defineSecret, defineString } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
+const Sentry = require('@sentry/node');
 
 admin.initializeApp();
 const db = admin.firestore();
+
+// Sentry DSN 은 functions/.env 의 SENTRY_DSN 에서 읽는다(미설정 시 비활성).
+// PII(쿠키·헤더·IP) 는 수집하지 않는다 → __session 쿠키 유출 방지.
+const SENTRY_DSN = defineString('SENTRY_DSN');
+const sentryDsn = SENTRY_DSN.value();
+if (sentryDsn) {
+  Sentry.init({
+    dsn: sentryDsn,
+    environment: process.env.NODE_ENV || 'production',
+    tracesSampleRate: 0, // 에러만 — 트레이싱 비활성(무료 쿼터 절약)
+    sendDefaultPii: false,
+  });
+}
 
 // client_secret 은 Secret Manager 에 보관(레포/환경변수에 평문 저장 안 함).
 //   설정: firebase functions:secrets:set GOOGLE_CLIENT_SECRET
@@ -109,13 +123,25 @@ async function handleLogin(req, res) {
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
+  // force=1 일 때만 동의/계정선택을 강제(refresh_token 폐기 복구용).
+  // 기본은 prompt 미지정 → 이미 동의·로그인된 사용자는 무음 리다이렉트(팝업 없음).
+  const force = req.query.force === '1' || req.query.force === 'true';
+  // login_hint: Drive state.userId(=OAuth sub) 를 넘겨 계정 선택 화면을 건너뛴다.
+  // 단순 힌트라 신원 결정에 쓰이지 않음(신원은 callback 의 검증된 id_token sub).
+  const hintRaw = req.query.login_hint;
+  const hint =
+    typeof hintRaw === 'string' && hintRaw.length > 0 && hintRaw.length <= 256
+      ? hintRaw
+      : null;
+
   const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   url.searchParams.set('client_id', CLIENT_ID);
   url.searchParams.set('redirect_uri', REDIRECT_URI);
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', SCOPES);
   url.searchParams.set('access_type', 'offline'); // refresh_token 요청
-  url.searchParams.set('prompt', 'consent'); // refresh_token 확실히 받기
+  if (force) url.searchParams.set('prompt', 'consent select_account');
+  if (hint) url.searchParams.set('login_hint', hint);
   url.searchParams.set('include_granted_scopes', 'true');
   url.searchParams.set('state', state);
   res.redirect(302, url.toString());
@@ -243,6 +269,12 @@ exports.api = onRequest(
       res.status(404).send('Not found');
     } catch (e) {
       console.error('[api] 처리 오류', e);
+      // 예기치 못한 오류만 Sentry 로 — 라우트 경로만 태그로 남기고
+      // 쿠키/헤더/쿼리(민감값 포함)는 첨부하지 않는다.
+      if (sentryDsn) {
+        Sentry.captureException(e, { tags: { route: path } });
+        await Sentry.flush(2000); // 서버리스: 종료 전 전송 보장
+      }
       res.status(500).send('Internal error');
     }
   },

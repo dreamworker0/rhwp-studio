@@ -414,3 +414,36 @@ html, body {
   transition: width 0.15s ease;
 }
 
+/* ─── Legal / Info Pages (Privacy · Terms · Support) ─── */
+.legal-page {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 40px 20px;
+  line-height: 1.6;
+  color: #e2e8f0;
+}
+.legal-page h1 { color: #f8fafc; margin-bottom: 8px; }
+.legal-page h2 { color: #f8fafc; margin-top: 32px; }
+.legal-page .meta { color: #94a3b8; margin-bottom: 32px; }
+.legal-page .en { color: #94a3b8; font-size: 0.9em; margin-top: 4px; }
+.legal-page ul { margin-top: 4px; margin-bottom: 4px; }
+.legal-page a { color: #818cf8; text-decoration: none; }
+.legal-page a:hover { text-decoration: underline; }
+
+.legal-page .support-card {
+  background-color: #1e293b;
+  padding: 20px;
+  border-radius: 6px;
+  border-left: 4px solid #818cf8;
+  margin-top: 30px;
+}
+.legal-page .support-card .label { margin-bottom: 5px; font-weight: bold; color: #94a3b8; }
+.legal-page .support-card a { font-size: 18px; font-weight: bold; }
+
+.legal-page .legal-footer {
+  margin-top: 48px;
+  padding-top: 24px;
+  border-top: 1px solid #334155;
+  text-align: center;
+}
+

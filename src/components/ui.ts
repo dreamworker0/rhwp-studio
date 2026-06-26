@@ -19,8 +19,8 @@ export function renderEditorLayout(name: string, isHwpx: boolean): string {
         </div>
       </header>
       <div id="editor-container" class="editor-main">
-        <div id="editor-loading" class="editor-loading">
-          <div class="spinner"></div>
+        <div id="editor-loading" class="editor-loading" role="status">
+          <div class="spinner" aria-hidden="true"></div>
           <p class="loading-msg">문서를 여는 중...</p>
         </div>
       </div>
@@ -39,7 +39,7 @@ export function renderAuthPrompt(app: HTMLElement, onAuthClick: () => void) {
   app.innerHTML = `
     <div class="loading-screen">
       <div class="brand-logo">
-        <span class="logo-badge">ㅎ</span>
+        <span class="logo-badge" aria-hidden="true">ㅎ</span>
         <span class="logo-name">rhwp Studio</span>
       </div>
       <p class="loading-msg">Google Drive 파일에 접근하려면<br/>Google 계정 인증이 필요합니다.</p>
@@ -59,12 +59,12 @@ export function renderAuthPrompt(app: HTMLElement, onAuthClick: () => void) {
 
 export function renderLoading(app: HTMLElement, message: string) {
   app.innerHTML = `
-    <div class="loading-screen">
+    <div class="loading-screen" role="status">
       <div class="brand-logo">
-        <span class="logo-badge">ㅎ</span>
+        <span class="logo-badge" aria-hidden="true">ㅎ</span>
         <span class="logo-name">rhwp Studio</span>
       </div>
-      <div class="spinner"></div>
+      <div class="spinner" aria-hidden="true"></div>
       <p class="loading-msg">${escapeHtml(message)}</p>
     </div>
   `
@@ -73,10 +73,29 @@ export function renderLoading(app: HTMLElement, message: string) {
 export function renderError(app: HTMLElement, title: string, detail: string) {
   app.innerHTML = `
     <div class="error-screen">
-      <div class="error-icon">⚠</div>
+      <div class="error-icon" aria-hidden="true">⚠</div>
       <h2 class="error-title">${escapeHtml(title)}</h2>
       <p class="error-detail">${escapeHtml(detail)}</p>
-      <button class="btn-retry" onclick="history.back()">← 돌아가기</button>
+      <button class="btn-retry" id="btn-error-back">← 돌아가기</button>
+    </div>
+  `
+  // 인라인 onclick 대신 리스너로 연결(CSP 안전)
+  document.getElementById('btn-error-back')?.addEventListener('click', () => history.back())
+}
+
+/**
+ * 법률/안내 페이지 공용 레이아웃 (Privacy / Terms / Support 공유).
+ * title·meta 는 정적 텍스트로 이스케이프하고, bodyHtml 은 신뢰된 정적 마크업을 그대로 삽입한다.
+ */
+export function renderLegalPage(title: string, meta: string, bodyHtml: string): string {
+  return `
+    <div class="legal-page">
+      <h1>${escapeHtml(title)}</h1>
+      <p class="meta">${escapeHtml(meta)}</p>
+      ${bodyHtml}
+      <div class="legal-footer">
+        <a href="/">&larr; 홈으로 돌아가기 (Back to Home)</a>
+      </div>
     </div>
   `
 }

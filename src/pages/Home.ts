@@ -3,7 +3,7 @@ export function renderHome(app: HTMLElement) {
     <div class="home-screen">
       <header class="home-header">
         <div class="home-brand">
-          <span class="logo-badge">ㅎ</span>
+          <span class="logo-badge" aria-hidden="true">ㅎ</span>
           <span class="logo-name">rhwp Studio</span>
         </div>
       </header>
@@ -63,7 +63,7 @@ export function renderHome(app: HTMLElement) {
         <div style="max-width: 600px; margin: 0 auto 32px auto; padding: 16px 20px; background-color: rgba(30, 41, 59, 0.5); border-radius: 12px; border: 1px solid rgba(51, 65, 85, 0.8); text-align: left;">
           <p style="margin: 0; font-size: 0.85rem; color: #94a3b8; line-height: 1.6;">
             <strong style="color: #cbd5e1; display: block; margin-bottom: 6px;">[오픈소스 출처 (Acknowledgements)]</strong>
-            본 애플리케이션은 HWP 문서 파싱 및 렌더링 엔진으로 오픈소스 프로젝트인 <a href="https://github.com/edwardkim/rhwp" target="_blank" style="color: #818cf8; text-decoration: none;">'rhwp'</a>를 기반으로 구축되었습니다.
+            본 애플리케이션은 HWP 문서 파싱 및 렌더링 엔진으로 오픈소스 프로젝트인 <a href="https://github.com/edwardkim/rhwp" target="_blank" rel="noopener noreferrer" style="color: #818cf8; text-decoration: none;">'rhwp'</a>를 기반으로 구축되었습니다.
           </p>
         </div>
         <p style="color: #64748b; font-size: 0.9rem;">© 2026 rhwp Studio</p>

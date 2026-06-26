@@ -126,6 +126,8 @@ async function handleLogin(req, res) {
   await db.collection('oauthStates').doc(state).set({
     ret,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    // Firestore TTL 정책(expireAt)으로 버려진 state 문서를 자동 정리.
+    expireAt: admin.firestore.Timestamp.fromMillis(Date.now() + STATE_TTL_MS),
   });
 
   // force=1 일 때만 동의/계정선택을 강제(refresh_token 폐기 복구용).
@@ -213,6 +215,8 @@ async function handleCallback(req, res) {
   await db.collection('driveSessions').doc(sid).set({
     sub,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    // Firestore TTL 정책(expireAt)으로 만료 세션을 자동 정리(서버측 만료 검사와 동일 기준).
+    expireAt: admin.firestore.Timestamp.fromMillis(Date.now() + SESSION_MAX_AGE * 1000),
   });
   setCookie(res, SESSION_COOKIE, sid, { maxAge: SESSION_MAX_AGE });
   res.redirect(302, APP_ORIGIN + safeReturnPath(ret));

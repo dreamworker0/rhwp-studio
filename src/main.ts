@@ -1,4 +1,5 @@
 import { initSentry } from './lib/sentry'
+import { initAnalytics } from './lib/analytics'
 import { renderHome } from './pages/Home'
 import { renderDriveOpen } from './pages/DriveOpen'
 import { renderDriveNew } from './pages/DriveNew'
@@ -8,6 +9,7 @@ import { renderSupport } from './pages/Support'
 import './style.css'
 
 initSentry()
+initAnalytics()
 
 const app = document.getElementById('app')!
 const path = location.pathname

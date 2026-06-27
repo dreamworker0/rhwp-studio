@@ -3,7 +3,7 @@ import { renderLegalPage } from '../components/ui'
 export function renderPrivacy(container: HTMLElement) {
   container.innerHTML = renderLegalPage(
     '개인정보처리방침 (Privacy Policy)',
-    '최종 수정일 (Last Updated): 2026년 4월 (April 2026)',
+    '최종 수정일 (Last Updated): 2026년 6월 (June 2026)',
     `
       <h2>1. 소개 (Introduction)</h2>
       <p>귀하의 개인정보는 당사에게 중요합니다. 본 개인정보처리방침은 귀하가 rhwp Studio의 Google Drive HWP 편집기 서비스를 사용할 때 귀하의 정보를 어떻게 수집하고 보호하는지 설명합니다.</p>
@@ -30,7 +30,11 @@ export function renderPrivacy(container: HTMLElement) {
       <p>모든 문서 렌더링 및 편집이 귀하의 로컬 기기에서만 완전히 이루어지도록 보장하여 보안을 최우선으로 합니다. 인증은 Google의 공식 OAuth 2.0 인프라를 통해 안전하게 처리됩니다.</p>
       <p class="en"><strong>5. Data Security:</strong> We prioritize your security by ensuring that all rendering happens locally. Authentication is handled securely through Google's official OAuth 2.0 infrastructure.</p>
 
-      <h2>6. 문의 (Contact Us)</h2>
+      <h2>6. 사용량 분석 (Analytics)</h2>
+      <p>당사는 서비스 개선을 위해 Google Analytics를 사용하여 익명화된 사용량 통계(방문 페이지, 대략적 지역, 기기·브라우저 종류 등)를 수집합니다. 이 과정에서 분석용 쿠키가 사용될 수 있으며, IP 주소는 익명화됩니다. 수집되는 정보에는 귀하의 문서 내용이나 Google Drive 파일이 <strong>일절 포함되지 않습니다.</strong> 자세한 내용은 <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">Google 개인정보처리방침</a>을 참고하세요.</p>
+      <p class="en"><strong>6. Analytics:</strong> We use Google Analytics to collect anonymized usage statistics (pages visited, approximate region, device/browser type) to improve the service. Analytics cookies may be used and IP addresses are anonymized. This data <strong>never</strong> includes your document contents or Google Drive files. See the <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">Google Privacy Policy</a> for details.</p>
+
+      <h2>7. 문의 (Contact Us)</h2>
       <p>본 개인정보처리방침에 대해 궁금한 점이 있으시면 다음 이메일로 문의해 주시기 바랍니다: ehsheh@gmail.com</p>
     `,
   )

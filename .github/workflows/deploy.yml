@@ -27,9 +27,13 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          # 공개 OAuth Client ID — 클라이언트 번들에 그대로 노출되는 값이라 비밀이 아님.
-          # Vite는 빌드 시점에 이 값을 번들에 박아넣으므로 CI 빌드에 반드시 필요하다.
+          # 아래 값들은 모두 클라이언트 번들에 그대로 노출되는 공개 식별자(비밀 아님).
+          # Vite는 빌드 시점에 박아넣으므로 CI 빌드에 반드시 주입해야 한다.
+          # .env 는 gitignore 되어 CI 에는 없으므로 여기서 명시하지 않으면 누락된다.
+          # (진짜 시크릿인 SENTRY_AUTH_TOKEN/소스맵 업로드는 CI 에서 하지 않음 — DSN 만으로 에러 수집됨)
           VITE_GOOGLE_CLIENT_ID: 292079787292-qmjcruc73ogvoffnf63f28nj7ov30csn.apps.googleusercontent.com
+          VITE_GA_MEASUREMENT_ID: G-JTGB3FJNSR
+          VITE_SENTRY_DSN: https://9fd1e2b373fb6db6ff122cbad8ffd162@o4510929630593024.ingest.us.sentry.io/4511628746555394
 
       # 서비스계정 키를 임시 파일로 기록 → firebase-tools가 GOOGLE_APPLICATION_CREDENTIALS로 인증.
       # 시크릿을 env로 받아 printf로 그대로 기록(텍스트 치환/heredoc보다 안전 — 들여쓰기·따옴표·줄바꿈 손상 없음).

@@ -3,28 +3,34 @@ import { getFileMeta, downloadFile, uploadFile } from '../lib/drive'
 import { renderEditorLayout, renderAuthPrompt, renderLoading, renderError } from '../components/ui'
 import { showHwpxToastIfNeeded, showViewerPermToast, setupSaveListener, loadFileDirectly } from '../lib/editor-utils'
 
-// 자동 로그인 리다이렉트가 1회를 넘지 않도록 하는 가드(탭 단위, 탭 닫으면 소멸).
-const AUTH_REDIRECT_FLAG = 'rhwp_auth_redirect_attempted'
+// 자동 로그인 리다이렉트 시도 횟수 가드(탭 단위, 탭 닫으면 소멸). 무한 루프 방지용.
+const AUTH_ATTEMPT_KEY = 'rhwp_auth_attempts'
+const MAX_AUTO_ATTEMPTS = 2
 
 /**
- * 세션이 없을 때의 재인증 처리.
- * - 가드 미설정: 자동으로 Google 로그인으로 이동(중간 버튼 없음).
- * - 가드 이미 설정(= 방금 로그인 후에도 세션 실패): 무한 루프 방지를 위해
- *   수동 버튼으로 폴백(클릭 시 동의 강제).
+ * 세션이 없을 때의 재인증 처리. 중간 버튼 없이 곧장 Google 로그인으로 이동한다.
+ * - 1차: 무음 리다이렉트(이미 동의한 사용자는 화면 없이 매끄럽게 복귀).
+ * - 2차: 무음 로그인으로도 세션이 안 잡히면 동의/계정선택을 강제해 자동 리다이렉트
+ *   (refresh_token 미발급 등 복구).
+ * - 그 이후(2회 모두 실패): 무한 루프 방지를 위해 수동 버튼으로만 폴백.
  */
 function attemptReauth(
   app: HTMLElement,
   returnPath: string,
   opts: { loginHint?: string; force?: boolean },
 ) {
-  if (sessionStorage.getItem(AUTH_REDIRECT_FLAG) === '1') {
-    sessionStorage.removeItem(AUTH_REDIRECT_FLAG)
+  const attempts = Number(sessionStorage.getItem(AUTH_ATTEMPT_KEY) || '0')
+  if (attempts >= MAX_AUTO_ATTEMPTS) {
+    // 자동 시도가 모두 실패 → 더 이상 자동 이동하지 않고 수동 버튼으로 폴백.
+    sessionStorage.removeItem(AUTH_ATTEMPT_KEY)
     renderAuthPrompt(app, () => startLogin(returnPath, { loginHint: opts.loginHint, force: true }))
     return
   }
-  sessionStorage.setItem(AUTH_REDIRECT_FLAG, '1')
+  sessionStorage.setItem(AUTH_ATTEMPT_KEY, String(attempts + 1))
+  // 2차 시도부터는 동의/계정선택 강제(무음 로그인이 세션을 못 만든 경우 복구).
+  const force = opts.force || attempts >= 1
   renderLoading(app, 'Google 로그인으로 이동 중...')
-  startLogin(returnPath, opts)
+  startLogin(returnPath, { loginHint: opts.loginHint, force })
 }
 
 export async function renderDriveOpen(app: HTMLElement) {
@@ -60,8 +66,8 @@ export async function renderDriveOpen(app: HTMLElement) {
   renderLoading(app, '인증 확인 중...')
   try {
     await getAccessToken()
-    // 세션 유효 → 이전 자동 리다이렉트 가드 해제(다음 만료 시 깨끗한 1회 시도 보장)
-    sessionStorage.removeItem(AUTH_REDIRECT_FLAG)
+    // 세션 유효 → 이전 자동 리다이렉트 가드 해제(다음 만료 시 깨끗한 시도 보장)
+    sessionStorage.removeItem(AUTH_ATTEMPT_KEY)
     await openFileFromDrive(app, fileId, loginHint)
     return
   } catch (e: unknown) {

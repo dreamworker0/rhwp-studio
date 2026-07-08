@@ -1,7 +1,7 @@
 import { getAccessToken, startLogin, clearTokenCache, NotAuthenticatedError } from '../lib/auth'
 import { getFileMeta, downloadFile, uploadFile } from '../lib/drive'
 import { renderEditorLayout, renderAuthPrompt, renderLoading, renderError } from '../components/ui'
-import { showHwpxToastIfNeeded, showViewerPermToast, setupSaveListener, loadFileDirectly } from '../lib/editor-utils'
+import { showViewerPermToast, setupSaveListener, loadFileDirectly } from '../lib/editor-utils'
 
 // 자동 로그인 리다이렉트 시도 횟수 가드(탭 단위, 탭 닫으면 소멸). 무한 루프 방지용.
 const AUTH_ATTEMPT_KEY = 'rhwp_auth_attempts'
@@ -115,9 +115,9 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
       return
     }
 
-    const isHwpx = ext === 'hwpx'
+    // HWPX도 편집 가능 (에디터 엔진의 HWPX 직렬화 정식화 이후). 뷰어 권한만 미리보기.
     const canEdit = meta.capabilities?.canEdit ?? true
-    const viewOnly = isHwpx || !canEdit
+    const viewOnly = !canEdit
     renderLoading(app, viewOnly ? '미리보기를 준비하는 중...' : '에디터를 준비하는 중...')
     document.title = `${meta.name} — rhwp Studio${viewOnly ? ' (미리보기)' : ''}`
 
@@ -125,7 +125,7 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
     app.innerHTML = renderEditorLayout(meta.name, viewOnly)
 
     document.getElementById('btn-back')?.addEventListener('click', async () => {
-      // 뷰어 모드(hwpx 또는 canEdit=false)는 저장 확인 없이 바로 뒤로가기
+      // 뷰어 모드(canEdit=false)는 저장 확인 없이 바로 뒤로가기
       if (viewOnly) {
         history.back()
         return
@@ -249,8 +249,7 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
     const statusText = document.getElementById('save-status')
 
     // 뷰어 모드 토스트
-    if (isHwpx) showHwpxToastIfNeeded()
-    else if (!canEdit) showViewerPermToast()
+    if (!canEdit) showViewerPermToast()
 
     // @rhwp/editor 로딩
     const { createEditor } = await import('@rhwp/editor')

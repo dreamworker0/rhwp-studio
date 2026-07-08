@@ -4,18 +4,18 @@ export function escapeHtml(str: string): string {
   return div.innerHTML
 }
 
-export function renderEditorLayout(name: string, isHwpx: boolean): string {
+export function renderEditorLayout(name: string, viewOnly: boolean): string {
   const escapedName = escapeHtml(name)
   return `
     <div class="editor-container">
       <header class="editor-header">
         <div class="editor-brand">
           <span class="editor-filename">${escapedName}</span>
-          ${isHwpx ? '<span class="editor-status" style="margin-left:8px; background:#ffc107; color:#212529;">미리보기</span>' : ''}
+          ${viewOnly ? '<span class="editor-status" style="margin-left:8px; background:#ffc107; color:#212529;">미리보기</span>' : ''}
         </div>
         <div class="editor-actions">
           <span id="save-status" style="font-size:14px; font-weight:bold; color:#4ade80; margin-right:15px; transition: opacity 0.3s;"></span>
-          ${isHwpx ? '<button id="btn-download" class="btn btn-primary" style="background-color: #0d6efd; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: bold;">다운로드</button>' : ''}
+          ${viewOnly ? '<button id="btn-download" class="btn btn-primary" style="background-color: #0d6efd; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 13px; cursor: pointer; font-weight: bold;">다운로드</button>' : ''}
         </div>
       </header>
       <div id="editor-container" class="editor-main">
@@ -24,10 +24,6 @@ export function renderEditorLayout(name: string, isHwpx: boolean): string {
           <p class="loading-msg">문서를 여는 중...</p>
         </div>
       </div>
-    </div>
-    <div id="hwpx-toast" style="display:none; position:fixed; bottom:32px; left:50%; transform:translateX(-50%); background:rgba(33,37,41,0.92); color:#fff; padding:14px 28px; border-radius:10px; font-size:15px; z-index:9999; box-shadow:0 4px 16px rgba(0,0,0,0.3); transition:opacity 0.4s;">
-      아직, hwpx 파일일 때는 미리보기만 가능합니다.
-      <button id="hwpx-toast-close" style="margin-left:12px; background:none; border:1px solid rgba(255,255,255,0.5); color:#fff; padding:2px 8px; border-radius:4px; cursor:pointer; font-size:13px;">다시 보지 않기</button>
     </div>
     <div id="viewer-perm-toast" style="display:none; position:fixed; bottom:32px; left:50%; transform:translateX(-50%); background:rgba(13,110,253,0.92); color:#fff; padding:14px 28px; border-radius:10px; font-size:15px; z-index:9999; box-shadow:0 4px 16px rgba(0,0,0,0.3); transition:opacity 0.4s;">
       뷰어 권한으로 공유된 파일입니다. 읽기 전용으로 열립니다.

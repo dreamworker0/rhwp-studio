@@ -1,28 +1,5 @@
 import { uploadFile } from './drive'
 
-const HWPX_TOAST_KEY = 'rhwp_hwpx_toast_dismissed'
-
-// ─── hwpx 토스트 (localStorage 기반 다시보지않기) ────────────────────────
-export function showHwpxToastIfNeeded(): void {
-  if (localStorage.getItem(HWPX_TOAST_KEY)) return
-
-  const toast = document.getElementById('hwpx-toast')
-  if (!toast) return
-  toast.style.display = 'block'
-  toast.style.opacity = '1'
-
-  const dismissToast = () => {
-    toast.style.opacity = '0'
-    setTimeout(() => { toast.style.display = 'none' }, 400)
-  }
-
-  // '다시 보지 않기'를 누를 때까지 유지 (자동으로 사라지지 않음)
-  document.getElementById('hwpx-toast-close')?.addEventListener('click', () => {
-    localStorage.setItem(HWPX_TOAST_KEY, '1')
-    dismissToast()
-  })
-}
-
 export function showViewerPermToast(): void {
   const toast = document.getElementById('viewer-perm-toast')
   if (!toast) return

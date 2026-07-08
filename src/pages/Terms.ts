@@ -10,8 +10,8 @@ export function renderTerms(container: HTMLElement) {
       <p class="en"><strong>1. Acceptance of Terms:</strong> By accessing or using rhwp Studio ("the Service"), you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use the Service.</p>
 
       <h2>2. 서비스 안내</h2>
-      <p>rhwp Studio는 사용자가 Google Drive에서 HWP 파일을 직접 열람하고 편집할 수 있도록 돕는 웹 기반 애플리케이션입니다. HWPX 파일은 미리보기(열람)만 지원합니다. 본 서비스는 WebAssembly를 사용하여 문서를 귀하의 브라우저 내부에서만 처리합니다.</p>
-      <p class="en"><strong>2. Description of Service:</strong> rhwp Studio is a web-based application that allows users to open and edit HWP files directly from their Google Drive. HWPX files are supported in preview (view-only) mode. The Service uses WebAssembly to process documents entirely within your browser.</p>
+      <p>rhwp Studio는 사용자가 Google Drive에서 HWP·HWPX 파일을 직접 열람하고 편집할 수 있도록 돕는 웹 기반 애플리케이션입니다. 본 서비스는 WebAssembly를 사용하여 문서를 귀하의 브라우저 내부에서만 처리합니다.</p>
+      <p class="en"><strong>2. Description of Service:</strong> rhwp Studio is a web-based application that allows users to open and edit HWP and HWPX files directly from their Google Drive. The Service uses WebAssembly to process documents entirely within your browser.</p>
 
       <h2>3. 개인정보 및 데이터 접근</h2>
       <p>본 서비스는 귀하가 명시적으로 선택한 파일을 열고 저장하기 위해 Google Drive 접근 권한을 요구합니다. 당사는 귀하의 파일을 외부 서버에 저장하지 않으며 모든 처리는 로컬 환경에서 이루어집니다. 자세한 내용은 <a href="/privacy">개인정보처리방침</a>을 확인해 주십시오.</p>

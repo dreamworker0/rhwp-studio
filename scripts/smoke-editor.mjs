@@ -8,7 +8,9 @@
  *  2. loadFile 핸드셰이크 — 표 문서 로드 후 **loadFile ack가 직접 도착**하는지
  *     (pageCount 폴링 폴백 없이. 과거 모달 순환대기로 60s timeout 나던 경로)
  *  3. pageCount > 0 (문서가 실제로 파싱·렌더 준비됨)
- *  4. 웹폰트 무결성 — fonts/*.woff2 요청이 HTML로 응답되거나(OTS 에러) 404가 아님
+ *  4. HWPX 왕복 — .hwpx 로드 → exportFile(HWPX 재직렬화) → 재로드 시
+ *     pageCount 동일 (HWPX 편집·저장 경로 검증)
+ *  5. 웹폰트 무결성 — fonts/*.woff2 요청이 HTML로 응답되거나(OTS 에러) 404가 아님
  *
  * 요구사항: Chrome 또는 Edge 설치 (CHROME_PATH 환경변수로 재정의 가능).
  * puppeteer-core는 temp_editor/rhwp-studio의 것을 재사용한다(별도 설치 불필요).
@@ -24,6 +26,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const DIST = resolve(ROOT, 'dist');
 const SAMPLE_URL = '/editor/samples/issue1949_giant_cell_nested_tables_perf.hwp';
+const SAMPLE_HWPX_URL = '/editor/samples/form-002.hwpx';
 const ACK_TIMEOUT_MS = 60_000;
 
 // puppeteer-core는 에디터 서브모듈 e2e 의존성을 재사용
@@ -104,20 +107,35 @@ function request(method, params, timeoutMs) {
     if (!ready) throw new Error('에디터 ready 응답 없음');
     window.__smoke.readyMs = Math.round(performance.now() - t0);
 
-    // 2) 샘플 다운로드 → loadFile ack 직접 수신 (폴링 폴백 없음)
-    window.__smoke.phase = 'loading';
+    // 2) HWP 표 문서 → loadFile ack 직접 수신 (폴링 폴백 없음)
+    window.__smoke.phase = 'loading-hwp';
     const buf = await (await fetch('${SAMPLE_URL}')).arrayBuffer();
     const t1 = performance.now();
     const result = await request('loadFile',
       { data: new Uint8Array(buf), fileName: 'smoke.hwp' }, ${ACK_TIMEOUT_MS});
-    window.__smoke = {
-      phase: 'done', ok: true,
-      readyMs: window.__smoke.readyMs,
+    const hwp = {
       loadMs: Math.round(performance.now() - t1),
       pageCount: result && result.pageCount,
     };
+
+    // 3) HWPX 왕복 — 로드 → exportFile(재직렬화) → 재로드 → pageCount 비교
+    window.__smoke.phase = 'loading-hwpx';
+    const xbuf = await (await fetch('${SAMPLE_HWPX_URL}')).arrayBuffer();
+    const r1 = await request('loadFile',
+      { data: new Uint8Array(xbuf), fileName: 'smoke.hwpx', skipUnsavedGuard: true }, ${ACK_TIMEOUT_MS});
+    const exported = await request('exportFile', {}, ${ACK_TIMEOUT_MS});
+    const r2 = await request('loadFile',
+      { data: new Uint8Array(exported.buffer), fileName: 'roundtrip.hwpx', skipUnsavedGuard: true }, ${ACK_TIMEOUT_MS});
+    const hwpx = {
+      pageCount: r1 && r1.pageCount,
+      exportBytes: exported.buffer.length,
+      exportMime: exported.mimeType,
+      roundtripPageCount: r2 && r2.pageCount,
+    };
+
+    window.__smoke = { phase: 'done', ok: true, readyMs: window.__smoke.readyMs, hwp, hwpx };
   } catch (e) {
-    window.__smoke = { phase: 'done', ok: false, error: String(e && e.message || e) };
+    window.__smoke = { phase: 'done', ok: false, error: String(e && e.message || e), failedPhase: window.__smoke.phase };
   }
 })();
 </script>`;
@@ -147,8 +165,8 @@ console.log('━'.repeat(60));
 if (!existsSync(join(DIST, 'editor', 'index.html'))) {
   fail('dist/editor/index.html 없음 — 먼저 npm run build를 실행하세요.');
 }
-if (!existsSync(join(DIST, SAMPLE_URL.replace(/\//g, '\\').slice(1)))) {
-  fail(`샘플 없음: dist${SAMPLE_URL}`);
+for (const s of [SAMPLE_URL, SAMPLE_HWPX_URL]) {
+  if (!existsSync(join(DIST, ...s.split('/').filter(Boolean)))) fail(`샘플 없음: dist${s}`);
 }
 
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
@@ -187,20 +205,29 @@ try {
 
   await page.goto(`http://127.0.0.1:${port}/__smoke.html`, { waitUntil: 'load', timeout: 60_000 });
 
-  console.log('\n   [1/3] 에디터 부팅 + loadFile ack 대기...');
+  console.log('\n   [1/4] 에디터 부팅 + loadFile ack 대기...');
   await page.waitForFunction('window.__smoke && window.__smoke.phase === "done"', {
-    timeout: ACK_TIMEOUT_MS + 90_000, polling: 500,
+    timeout: ACK_TIMEOUT_MS * 4 + 60_000, polling: 500,
   });
   const smoke = await page.evaluate('window.__smoke');
 
-  if (!smoke.ok) fail(`loadFile 핸드셰이크 실패 — ${smoke.error}`);
-  console.log(`         ✓ ready ${smoke.readyMs}ms, loadFile ack ${smoke.loadMs}ms`);
+  if (!smoke.ok) fail(`핸드셰이크 실패 (${smoke.failedPhase}) — ${smoke.error}`);
+  console.log(`         ✓ ready ${smoke.readyMs}ms, HWP loadFile ack ${smoke.hwp.loadMs}ms`);
 
-  console.log('   [2/3] pageCount 확인...');
-  if (!(smoke.pageCount > 0)) fail(`pageCount가 0 또는 없음: ${JSON.stringify(smoke.pageCount)}`);
-  console.log(`         ✓ pageCount = ${smoke.pageCount}`);
+  console.log('   [2/4] HWP pageCount 확인...');
+  if (!(smoke.hwp.pageCount > 0)) fail(`HWP pageCount가 0 또는 없음: ${JSON.stringify(smoke.hwp.pageCount)}`);
+  console.log(`         ✓ pageCount = ${smoke.hwp.pageCount}`);
 
-  console.log('   [3/3] 웹폰트/콘솔 점검...');
+  console.log('   [3/4] HWPX 왕복 확인...');
+  const x = smoke.hwpx;
+  if (!(x.pageCount > 0)) fail(`HWPX pageCount가 0 또는 없음: ${JSON.stringify(x.pageCount)}`);
+  if (x.exportMime !== 'application/hwp+zip') fail(`HWPX export mime 이상: ${x.exportMime}`);
+  if (x.roundtripPageCount !== x.pageCount) {
+    fail(`HWPX 왕복 pageCount 불일치: ${x.pageCount} → ${x.roundtripPageCount}`);
+  }
+  console.log(`         ✓ ${x.pageCount}p → 재직렬화 ${(x.exportBytes / 1024).toFixed(1)}KB → 재로드 ${x.roundtripPageCount}p 일치`);
+
+  console.log('   [4/4] 웹폰트/콘솔 점검...');
   if (fontProblems.length) fail(`폰트 문제 ${fontProblems.length}건:\n     ${fontProblems.slice(0, 5).join('\n     ')}`);
   console.log(`         ✓ OTS/폰트 에러 없음 (콘솔 error ${consoleErrors.length}건은 참고용)`);
   if (consoleErrors.length) {

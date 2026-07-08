@@ -13,8 +13,8 @@
   <title>rhwp-studio</title>
   <!-- Google Identity Services (Drive 연동) -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script type="module" crossorigin src="./assets/index-BHGxG3E4.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-B4T4AjPE.css">
+  <script type="module" crossorigin src="./assets/index-D14Ty_yP.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-dcEiT5tZ.css">
 <link rel="manifest" href="./manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="./registerSW.js"></script>
   <!-- [custom] 미리보기 모드(?mode=view): 편집 UI 숨김 + 본문 읽기전용 -->
   <script>
@@ -61,6 +61,8 @@
           <div class="md-item" data-cmd="file:open"><span class="md-icon"></span><span class="md-label">열기</span></div>
           <div class="md-item disabled" data-cmd="file:save"><span class="md-icon icon-save"></span><span class="md-label">구글 드라이브에 저장</span><span class="md-shortcut">Ctrl+S</span></div>
           <div class="md-item disabled" data-cmd="file:save-as"><span class="md-icon"></span><span class="md-label">PC에 저장</span><span class="md-shortcut">Ctrl+Shift+S</span></div>
+          <div class="md-item disabled" data-cmd="file:save-as-hwp"><span class="md-icon"></span><span class="md-label">PC에 저장 (HWP 형식)...</span></div>
+          <div class="md-item disabled" data-cmd="file:save-as-hwpx"><span class="md-icon"></span><span class="md-label">PC에 저장 (HWPX 형식)...</span></div>
           <div class="md-sep"></div>
           <div class="md-item disabled" data-cmd="file:page-setup"><span class="md-icon icon-page-setup"></span><span class="md-label">편집 용지</span><span class="md-shortcut">F7</span></div>
           <div class="md-item disabled" data-cmd="file:print"><span class="md-icon icon-print"></span><span class="md-label">인쇄</span><span class="md-shortcut">Ctrl+P</span></div>
@@ -408,6 +410,8 @@
           <div class="md-item disabled" data-cmd="table:cell-merge"><span class="md-icon"></span><span class="md-label">셀 합치기</span><span class="md-shortcut">M</span></div>
           <div class="md-item disabled" data-cmd="table:cell-height-equal"><span class="md-icon"></span><span class="md-label">셀 높이를 같게</span><span class="md-shortcut">H</span></div>
           <div class="md-item disabled" data-cmd="table:cell-width-equal"><span class="md-icon"></span><span class="md-label">셀 너비를 같게</span><span class="md-shortcut">W</span></div>
+          <div class="md-item disabled" data-cmd="table:transpose-copy"><span class="md-icon"></span><span class="md-label">행/열 바꿈 복사</span></div>
+          <div class="md-item disabled" data-cmd="table:transpose-paste"><span class="md-icon"></span><span class="md-label">행/열 바꿈 붙여넣기</span></div>
           <div class="md-sep"></div>
           <div class="md-item disabled" data-cmd="table:block-formula"><span class="md-icon"></span><span class="md-label">블록 계산식</span></div>
           <div class="md-item disabled" data-cmd="table:block-sum"><span class="md-icon"></span><span class="md-label">블록 합계</span><span class="md-shortcut">Ctrl+Shift+S</span></div>

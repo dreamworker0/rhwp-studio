@@ -10,16 +10,45 @@
  * ─── 주입 목록 ───────────────────────────────────────────────────────────
  * 1. 미리보기 모드(?mode=view) UI 숨김 스크립트
  *    → #menu-bar, #icon-toolbar, #style-bar 를 CSS로 즉시 숨김
+ * 2. fonts 실복사 — upstream의 rhwp-studio/public/fonts는 심볼릭링크라
+ *    Windows(core.symlinks=false)에서 15바이트 텍스트 파일로 체크아웃되고,
+ *    그대로 산출물에 복사돼 웹폰트 전체 404(OTS 에러)가 됨.
+ *    → temp_editor/web/fonts 를 public/editor/fonts 로 실제 복사한다.
  * ─────────────────────────────────────────────────────────────────────────
  */
 
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, statSync, rmSync, mkdirSync, readdirSync, copyFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const EDITOR_HTML = resolve(ROOT, 'public', 'editor', 'index.html');
+const FONTS_SRC = resolve(ROOT, 'temp_editor', 'web', 'fonts');
+const FONTS_DEST = resolve(ROOT, 'public', 'editor', 'fonts');
+
+/** fonts가 깨진 심볼릭링크(일반 파일)면 지우고, web/fonts에서 실제 파일로 복사 */
+function syncFonts() {
+  if (!existsSync(FONTS_SRC)) {
+    console.log('  - fonts 동기화: 소스 없음 (temp_editor/web/fonts) — 건너뜀');
+    return;
+  }
+  if (existsSync(FONTS_DEST) && !statSync(FONTS_DEST).isDirectory()) {
+    rmSync(FONTS_DEST); // 심볼릭링크가 텍스트 파일로 체크아웃된 잔재 제거
+  }
+  mkdirSync(FONTS_DEST, { recursive: true });
+  let copied = 0;
+  for (const name of readdirSync(FONTS_SRC)) {
+    const src = resolve(FONTS_SRC, name);
+    if (!statSync(src).isFile()) continue;
+    const dest = resolve(FONTS_DEST, name);
+    if (existsSync(dest) && statSync(dest).size === statSync(src).size) continue;
+    copyFileSync(src, dest);
+    copied++;
+  }
+  const total = readdirSync(FONTS_DEST).length;
+  console.log(`  ✓ fonts 동기화: ${copied}개 복사 (총 ${total}개 파일)`);
+}
 
 // ─── 주입할 커스터마이즈 블록 ──────────────────────────────────────────
 const INJECT_BEFORE_HEAD_CLOSE = `
@@ -78,6 +107,8 @@ console.log('\n🔧 post-build: public/editor/index.html 커스터마이즈 주�
 console.log(`   대상: ${EDITOR_HTML}\n`);
 
 try {
+  syncFonts();
+
   const original = readFileSync(EDITOR_HTML, 'utf-8');
   const { result, patchCount } = injectCustomizations(original);
 

@@ -1,4 +1,5 @@
 import { uploadFile } from './drive'
+import { trackEvent } from './analytics'
 
 const HWPX_EDIT_TOAST_KEY = 'rhwp_hwpx_edit_toast_dismissed'
 
@@ -65,6 +66,8 @@ export function setupSaveListener(
       return
     }
 
+    // 익명 계측용 포맷(파일명 아님). 에디터가 보낸 mimeType 기준.
+    const fmt = saveMime.includes('hwp+zip') ? 'hwpx' : 'hwp'
     try {
       if (statusText) statusText.textContent = '저장 중...'
       console.log(`[DriveOpen] Google Drive 업로드: ${saveName} (${(fileBuffer as ArrayBuffer).byteLength ?? '?'} bytes)`)
@@ -77,8 +80,11 @@ export function setupSaveListener(
         statusText.textContent = `✔ 마지막 저장 ${hh}:${mm}`
       }
       console.log('[DriveOpen] Google Drive 저장 성공')
+      // trigger 'editor' = 에디터발 저장(Ctrl+S·자동저장 공통, 메시지에 구분 정보 없음)
+      trackEvent('document_save', { format: fmt, result: 'success', trigger: 'editor' })
     } catch (err) {
       console.error('[DriveOpen] Google 드라이브 저장 실패:', err)
+      trackEvent('document_save', { format: fmt, result: 'fail', trigger: 'editor' })
       alert('구글 드라이브 업로드에 실패했습니다.')
       if (statusText) statusText.textContent = '❌ 저장 실패'
     }

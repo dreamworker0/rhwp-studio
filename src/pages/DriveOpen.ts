@@ -2,6 +2,7 @@ import { getAccessToken, startLogin, clearTokenCache, NotAuthenticatedError } fr
 import { getFileMeta, downloadFile, uploadFile } from '../lib/drive'
 import { renderEditorLayout, renderAuthPrompt, renderLoading, renderError } from '../components/ui'
 import { showViewerPermToast, showHwpxEditToastIfNeeded, setupSaveListener, loadFileDirectly } from '../lib/editor-utils'
+import { trackEvent } from '../lib/analytics'
 
 // 자동 로그인 리다이렉트 시도 횟수 가드(탭 단위, 탭 닫으면 소멸). 무한 루프 방지용.
 const AUTH_ATTEMPT_KEY = 'rhwp_auth_attempts'
@@ -81,6 +82,9 @@ export async function renderDriveOpen(app: HTMLElement) {
 }
 
 async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: string) {
+  // GA 계측용(익명): 포맷·체류시간. 파일명/식별자는 절대 싣지 않는다.
+  let docFormat: 'hwp' | 'hwpx' | 'unknown' = 'unknown'
+  let openedAt = 0
   renderLoading(app, 'Drive에서 파일을 불러오는 중...')
   // 스피너 DOM 재생성 없이 메시지/막대만 갱신(깜빡임 방지)
   const loadingMsg = app.querySelector('.loading-msg')
@@ -117,6 +121,7 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
 
     // HWPX도 편집 가능 (에디터 엔진의 HWPX 직렬화 정식화 이후). 뷰어 권한만 미리보기.
     const isHwpx = ext === 'hwpx'
+    docFormat = isHwpx ? 'hwpx' : 'hwp'
     const canEdit = meta.capabilities?.canEdit ?? true
     const viewOnly = !canEdit
     renderLoading(app, viewOnly ? '미리보기를 준비하는 중...' : '에디터를 준비하는 중...')
@@ -126,6 +131,15 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
     app.innerHTML = renderEditorLayout(meta.name, viewOnly)
 
     document.getElementById('btn-back')?.addEventListener('click', async () => {
+      // 체류 시간(익명) — iframe 편집이라 GA 기본 참여시간이 과소집계되는 것을 보완
+      if (openedAt) {
+        trackEvent('document_close', {
+          format: docFormat,
+          view_only: viewOnly,
+          duration_sec: Math.round((Date.now() - openedAt) / 1000),
+        })
+      }
+
       // 뷰어 모드(canEdit=false)는 저장 확인 없이 바로 뒤로가기
       if (viewOnly) {
         history.back()
@@ -187,12 +201,14 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
 
           if (statusText) statusText.textContent = '✔ 저장 완료'
           console.log('[DriveOpen] 닫기 전 저장 완료')
+          trackEvent('document_save', { format: docFormat, result: 'success', trigger: 'close' })
 
           // 저장 완료 후 짧은 딜레이 후 뒤로가기
           setTimeout(() => { history.back() }, 500)
         } catch (err) {
           console.error('[DriveOpen] 닫기 전 저장 실패:', err)
           if (statusText) statusText.textContent = '❌ 저장 실패'
+          trackEvent('document_save', { format: docFormat, result: 'fail', trigger: 'close' })
           const forceClose = confirm('저장에 실패했습니다. 그래도 닫으시겠습니까?')
           if (forceClose) history.back()
         }
@@ -293,18 +309,28 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
       document.getElementById('editor-loading')?.remove()
     }
 
+    // 여기 도달 = 로드 성공(실패 시 위에서 throw). 익명 이벤트로 열기 성공 기록.
+    openedAt = Date.now()
+    trackEvent('document_open', { format: docFormat, view_only: viewOnly })
+
   } catch (e: unknown) {
     console.error(e)
     const msg = e instanceof Error ? e.message : String(e)
 
     // 401 권한 오류 시 토큰 캐시를 비우고 재로그인 유도(동의 강제로 refresh_token 재발급)
     if (msg.includes('401') || msg.includes('UNAUTHENTICATED') || msg.toLowerCase().includes('invalid credentials')) {
+      trackEvent('document_open_error', { format: docFormat, reason: 'auth' })
       clearTokenCache()
       app.innerHTML = ''
       attemptReauth(app, location.pathname + location.search, { loginHint, force: true })
       return
     }
 
+    // 로드 타임아웃/파싱 실패 등 — 원문 메시지(파일명 가능)는 싣지 않고 coarse reason 만.
+    const reason = /timeout/i.test(msg) ? 'timeout'
+      : /HWP\/HWPX|시그니처|미리보기/i.test(msg) ? 'invalid_format'
+      : 'other'
+    trackEvent('document_open_error', { format: docFormat, reason })
     renderError(app, '파일을 열 수 없습니다', msg)
   }
 }

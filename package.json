@@ -11,6 +11,7 @@
     "post-build": "node scripts/post-build.js",
     "sync:wasm": "node scripts/sync-wasm.js",
     "verify:custom": "node scripts/verify-custom.js",
+    "smoke": "node scripts/smoke-editor.mjs",
     "upstream:check": "node scripts/upstream-check.js",
     "upstream:update": "node scripts/upstream-update.js"
   },

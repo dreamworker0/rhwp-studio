@@ -1,5 +1,27 @@
 import { uploadFile } from './drive'
 
+const HWPX_EDIT_TOAST_KEY = 'rhwp_hwpx_edit_toast_dismissed'
+
+// ─── HWPX 편집 안내 토스트 (첫 편집 1회, localStorage로 다시보지않기) ──────
+// HWPX 저장은 구조는 보존하나 시각 충실도는 보장되지 않으므로 사본 편집을 권한다.
+export function showHwpxEditToastIfNeeded(): void {
+  let dismissed = false
+  try { dismissed = localStorage.getItem(HWPX_EDIT_TOAST_KEY) === '1' } catch { /* 제한 환경 무시 */ }
+  if (dismissed) return
+
+  const toast = document.getElementById('hwpx-edit-toast')
+  if (!toast) return
+  toast.style.display = 'block'
+  toast.style.opacity = '1'
+
+  // '다시 보지 않기'를 누를 때까지 유지 (자동으로 사라지지 않음)
+  document.getElementById('hwpx-edit-toast-close')?.addEventListener('click', () => {
+    try { localStorage.setItem(HWPX_EDIT_TOAST_KEY, '1') } catch { /* 무시 */ }
+    toast.style.opacity = '0'
+    setTimeout(() => { toast.style.display = 'none' }, 400)
+  })
+}
+
 export function showViewerPermToast(): void {
   const toast = document.getElementById('viewer-perm-toast')
   if (!toast) return

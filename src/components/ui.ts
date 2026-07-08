@@ -28,6 +28,10 @@ export function renderEditorLayout(name: string, viewOnly: boolean): string {
     <div id="viewer-perm-toast" style="display:none; position:fixed; bottom:32px; left:50%; transform:translateX(-50%); background:rgba(13,110,253,0.92); color:#fff; padding:14px 28px; border-radius:10px; font-size:15px; z-index:9999; box-shadow:0 4px 16px rgba(0,0,0,0.3); transition:opacity 0.4s;">
       뷰어 권한으로 공유된 파일입니다. 읽기 전용으로 열립니다.
     </div>
+    <div id="hwpx-edit-toast" style="display:none; position:fixed; bottom:32px; left:50%; transform:translateX(-50%); max-width:520px; background:rgba(33,37,41,0.94); color:#fff; padding:14px 24px; border-radius:10px; font-size:14px; line-height:1.6; z-index:9999; box-shadow:0 4px 16px rgba(0,0,0,0.3); transition:opacity 0.4s;">
+      HWPX 편집·저장이 지원됩니다. 문서 구조는 보존되지만 복잡한 문서는 레이아웃이 미세하게 달라질 수 있어요. 중요한 문서는 사본을 두고 편집하세요.
+      <button id="hwpx-edit-toast-close" style="margin-left:12px; background:none; border:1px solid rgba(255,255,255,0.5); color:#fff; padding:2px 8px; border-radius:4px; cursor:pointer; font-size:13px; white-space:nowrap;">다시 보지 않기</button>
+    </div>
   `
 }
 

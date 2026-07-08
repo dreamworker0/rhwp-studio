@@ -55,7 +55,7 @@ export function renderHome(app: HTMLElement) {
           <span class="badge badge-outline">Open Source</span>
           <span class="badge badge-outline">WebAssembly</span>
         </div>
-        <p class="home-note">※ HWPX 파일은 읽기 전용으로 작동합니다.</p>
+        <p class="home-note">※ 중요한 문서는 편집 전 Google Drive에서 사본을 만들어 두시길 권장합니다.</p>
       </main>
 
       <footer class="home-footer" style="margin-top: 60px;">

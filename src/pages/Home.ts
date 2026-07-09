@@ -11,7 +11,7 @@ export function renderHome(app: HTMLElement) {
       <main class="home-main">
         <h1 class="home-title">
           Google Drive에서<br/>
-          <span class="gradient-text">HWP 파일을 바로 편집, 저장</span>
+          <span class="gradient-text">HWP(X) 파일을 바로 편집, 저장</span>
         </h1>
         <p class="home-subtitle">
           한글(HWP·HWPX) 파일을 설치 없이 웹에서 편집하세요.<br/>

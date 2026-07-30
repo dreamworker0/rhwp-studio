@@ -273,7 +273,12 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
     const { createEditor } = await import('@rhwp/editor')
     const container = document.getElementById('editor-container')!
 
-    const studioUrl = viewOnly ? '/editor/index.html?mode=view' : '/editor/index.html'
+    // [cache-bust] /editor/index.html 이 CDN 엣지에 옛 버전으로 고착될 수 있어(max-age 잔재)
+    // 버전 쿼리로 새 캐시 키를 강제한다. 배포 시 EDITOR_CACHE_TAG 만 올리면 됨.
+    const EDITOR_CACHE_TAG = 'v20260730'
+    const studioUrl = viewOnly
+      ? `/editor/index.html?mode=view&${EDITOR_CACHE_TAG}`
+      : `/editor/index.html?${EDITOR_CACHE_TAG}`
     const editor = await createEditor(container, { studioUrl })
 
     // 편집 가능한 hwp 파일만 저장 핸들러 등록 + 탭 닫기 경고

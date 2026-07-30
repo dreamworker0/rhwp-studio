@@ -19,7 +19,8 @@ export async function renderDriveNew(app: HTMLElement) {
 
   try {
     const { createEditor } = await import('@rhwp/editor');
-    await createEditor(container, { studioUrl: '/editor/index.html' });
+    // [cache-bust] 엣지 고착 우회용 버전 쿼리 (DriveOpen 과 동일 태그 유지)
+    await createEditor(container, { studioUrl: '/editor/index.html?v20260730' });
 
   } catch (e: unknown) {
     console.error('Editor Error', e)

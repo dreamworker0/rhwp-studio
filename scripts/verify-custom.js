@@ -59,12 +59,11 @@ const checks = [
       '            isEmbedded → window.parent.postMessage({type:\'save\', ...}) 분기를 다시 넣고 재빌드.',
   },
   {
-    name: '닫기 전 저장용 export RPC (부모가 exportHwpx로 pull)',
+    name: "래퍼 exportFile API (닫기 전 저장)",
     haystack: bundleJs,
-    needle: 'exportHwpx',
+    needle: 'exportFile',
     hint:
-      "임베드 런타임에 exportHwpx 핸들러가 없습니다 → 부모(DriveOpen)의 '닫기 전 저장' pull 불가.\n" +
-      '      0.8.0부터 닫기-저장은 커스텀 exportFile 대신 upstream exportHwp/exportHwpx RPC를 쓴다.',
+      "main.ts rhwp-request switch의 case 'exportFile'이 사라졌습니다 → 닫기 전 저장 동작 불가.",
   },
   {
     name: '임베디드 자동 저장 → Drive',

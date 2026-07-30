@@ -8,7 +8,7 @@
  *  2. loadFile 핸드셰이크 — 표 문서 로드 후 **loadFile ack가 직접 도착**하는지
  *     (pageCount 폴링 폴백 없이. 과거 모달 순환대기로 60s timeout 나던 경로)
  *  3. pageCount > 0 (문서가 실제로 파싱·렌더 준비됨)
- *  4. HWPX 왕복 — .hwpx 로드 → exportHwpx(HWPX 재직렬화) → 재로드 시
+ *  4. HWPX 왕복 — .hwpx 로드 → exportFile(HWPX 재직렬화) → 재로드 시
  *     pageCount 동일 (HWPX 편집·저장 경로 검증)
  *  5. 웹폰트 무결성 — fonts/*.woff2 요청이 HTML로 응답되거나(OTS 에러) 404가 아님
  *
@@ -118,19 +118,18 @@ function request(method, params, timeoutMs) {
       pageCount: result && result.pageCount,
     };
 
-    // 3) HWPX 왕복 — 로드 → exportHwpx(재직렬화) → 재로드 → pageCount 비교
-    //    (0.8.0부터 커스텀 exportFile 대신 upstream exportHwpx RPC 사용. 응답은 number[].)
+    // 3) HWPX 왕복 — 로드 → exportFile(재직렬화) → 재로드 → pageCount 비교
     window.__smoke.phase = 'loading-hwpx';
     const xbuf = await (await fetch('${SAMPLE_HWPX_URL}')).arrayBuffer();
     const r1 = await request('loadFile',
       { data: new Uint8Array(xbuf), fileName: 'smoke.hwpx', skipUnsavedGuard: true }, ${ACK_TIMEOUT_MS});
-    const exported = await request('exportHwpx', {}, ${ACK_TIMEOUT_MS});
+    const exported = await request('exportFile', {}, ${ACK_TIMEOUT_MS});
     const r2 = await request('loadFile',
-      { data: new Uint8Array(exported), fileName: 'roundtrip.hwpx', skipUnsavedGuard: true }, ${ACK_TIMEOUT_MS});
+      { data: new Uint8Array(exported.buffer), fileName: 'roundtrip.hwpx', skipUnsavedGuard: true }, ${ACK_TIMEOUT_MS});
     const hwpx = {
       pageCount: r1 && r1.pageCount,
-      exportBytes: exported.length,
-      exportMime: 'application/hwp+zip',
+      exportBytes: exported.buffer.length,
+      exportMime: exported.mimeType,
       roundtripPageCount: r2 && r2.pageCount,
     };
 

@@ -24,19 +24,13 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const EDITOR_HTML = resolve(ROOT, 'public', 'editor', 'index.html');
-// 폰트 소스 경로: 0.8.0에서 web/fonts → assets/fonts 로 이동(rhwp-studio/public/fonts 심볼릭링크 대상).
-// 버전 간 견고함을 위해 존재하는 쪽을 사용한다.
-const FONTS_SRC_CANDIDATES = [
-  resolve(ROOT, 'temp_editor', 'assets', 'fonts'),
-  resolve(ROOT, 'temp_editor', 'web', 'fonts'),
-];
-const FONTS_SRC = FONTS_SRC_CANDIDATES.find(existsSync) ?? FONTS_SRC_CANDIDATES[0];
+const FONTS_SRC = resolve(ROOT, 'temp_editor', 'web', 'fonts');
 const FONTS_DEST = resolve(ROOT, 'public', 'editor', 'fonts');
 
-/** fonts가 깨진 심볼릭링크(일반 파일)면 지우고, 실제 폰트 소스에서 실제 파일로 복사 */
+/** fonts가 깨진 심볼릭링크(일반 파일)면 지우고, web/fonts에서 실제 파일로 복사 */
 function syncFonts() {
   if (!existsSync(FONTS_SRC)) {
-    console.log('  - fonts 동기화: 소스 없음 (temp_editor/{assets,web}/fonts) — 건너뜀');
+    console.log('  - fonts 동기화: 소스 없음 (temp_editor/web/fonts) — 건너뜀');
     return;
   }
   if (existsSync(FONTS_DEST) && !statSync(FONTS_DEST).isDirectory()) {

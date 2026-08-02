@@ -25,7 +25,7 @@ src/                     ← 호스트 앱 (Vite + TypeScript strict)
     auth.ts              ← Drive 인증 클라이언트 (/api/* 호출)
     drive.ts             ← Drive API v3 헬퍼
     editor-utils.ts      ← 에디터 iframe 브릿지 (postMessage)
-    hwp-renderer.ts      ← @rhwp/core WASM 직접 로드 → SVG 렌더(미리보기)
+    hwp-renderer.ts      ← @rhwp/core 직접 로드 → SVG (⚠️ 현재 미사용)
     sentry.ts            ← 에러 추적(민감 파라미터 스크럽)
     analytics.ts         ← GA4
   components/ui.ts
@@ -75,13 +75,18 @@ dist/                    ← 빌드 출력 (public/ 이 그대로 복사됨 → 
 
 ## 에디터 iframe 브릿지
 
-호스트 앱과 에디터는 `postMessage` 로 통신한다(`src/lib/editor-utils.ts`, `src/pages/DriveOpen.ts`).
+호스트 앱과 에디터는 `postMessage` **RPC** 로 통신한다(`src/lib/editor-utils.ts`, `src/pages/DriveOpen.ts`).
 
-| 메시지 | 방향 | 용도 |
-|---|---|---|
-| `loadFile` | 호스트 → 에디터 | 문서 바이트 전달·로드 |
-| `save` | 에디터 → 호스트 | 저장 요청 → Drive 업로드 |
-| `exportFile` | 호스트 → 에디터 | 다른 포맷으로 재직렬화 |
+```js
+// 호스트 → 에디터
+{ type: 'rhwp-request',  id: <고유값>, method: 'loadFile'|'exportFile'|'pageCount', params: {…} }
+// 에디터 → 호스트
+{ type: 'rhwp-response', id: <같은 값>, result?: any, error?: string }
+```
+
+에디터가 먼저 보내는 메시지도 있다 — 저장 요청(`save` / `rhwp-save` / `action:'save'`)과 변경 알림(`document-dirty`). 모든 메시지는 `location.origin` 으로만 보내고 수신 시 `e.origin` 을 검사한다.
+
+`loadFile` 에는 재시도 5회·`pageCount` 폴링 폴백이 붙어 있다(WASM 초기화 지연과 응답 유실 대응). 자세한 값은 [architecture.md](./architecture.md#에디터-iframe-rpc-프로토콜) 참고.
 
 읽기 전용 권한이면 `/editor/index.html?mode=view` 로 띄운다(메뉴바·툴바 숨김 — `scripts/post-build.js` 가 주입한 스크립트가 처리).
 

@@ -9,12 +9,13 @@ rhwp-studio 는 한글 문서(.hwp/.hwpx)를 Google Drive 와 연동해 열람·
 |------|------|------|
 | [SKILL.md](./SKILL.md) | 운영 지침서 — 프로젝트 구조, 인증 흐름, iframe 브릿지, 워크플로 | 최신 |
 | [deployment.md](./deployment.md) | 배포 절차, 체크리스트, 환경별 가능/불가, 롤백 | 최신 |
-| [architecture.md](./architecture.md) | 아키텍처 개요, 데이터 흐름 | ⚠️ 낡음 |
+| [architecture.md](./architecture.md) | 아키텍처 — 런타임 구성, 데이터 흐름, RPC 프로토콜, Firestore 스키마 | 최신 |
 | [troubleshooting/guide.md](./troubleshooting/guide.md) | 에러별 원인·해결 가이드 | ⚠️ 낡음 |
 
-> ⚠️ 표시된 두 문서에는 이 레포가 **에디터 포크**였던 시절(`temp_editor/rhwp-studio` 가 곧 앱이던 구조)의
-> 내용이 남아 있다. 경로·모듈 구성·인증 방식이 지금과 다르므로 그대로 따르지 말 것.
-> 현재 기준 정보는 [SKILL.md](./SKILL.md) 와 루트 `CLAUDE.md` 에 있다.
+> ⚠️ 표시된 문서에는 이 레포가 **에디터 포크**였던 시절(`temp_editor/rhwp-studio` 가 곧 앱이던 구조)의
+> 내용이 남아 있다. 경로·모듈 구성·인증 방식이 지금과 다르고, 존재하지 않는 심볼(`fetchWithRetry()`,
+> `[WasmBridge]` 로그 등)을 해결책으로 안내하므로 그대로 따르지 말 것.
+> 현재 기준 정보는 [SKILL.md](./SKILL.md) · [architecture.md](./architecture.md) 와 루트 `CLAUDE.md` 에 있다.
 
 ## 관련 문서
 

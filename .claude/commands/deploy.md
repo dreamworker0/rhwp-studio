@@ -9,4 +9,5 @@ rhwp-studio 배포 절차를 수행한다. 라이브 프로덕션(`rhwp-studio.w
 4. 승인 후 `firebase deploy --only hosting,functions` 실행.
    - **함수 변경이 있으면 반드시 `functions` 포함** (CI는 hosting만 배포하므로 함수는 여기서만 갱신됨).
    - 인증 `Premature close`/`Failed to authenticate` 같은 일시 실패면 1회 재시도.
+   - ⚠️ **클라우드 세션(`CLAUDE_CODE_REMOTE=true`)이면 `--only hosting` 까지만 가능하다** — 거기 서비스계정은 Hosting 전용이다. 함수 변경이 섞여 있으면 배포하지 말고 **로컬에서 하라고 사용자에게 알린다.**
 5. 배포 후 Hosting URL과 함수 업데이트 결과를 보고. `.env`/시크릿이 번들·로그에 노출되지 않았는지 확인.

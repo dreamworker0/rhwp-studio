@@ -50,12 +50,10 @@ src/                     ← 호스트 앱
     auth.ts              ← 세션 기반 토큰 획득 (/api/drive-token)
     drive.ts             ← Drive API v3 (getFileMeta / downloadFile / uploadFile)
     editor-utils.ts      ← iframe RPC, 저장 리스너, 안내 토스트
-    hwp-renderer.ts      ← @rhwp/core 직접 로드 → SVG (⚠️ 현재 미사용, 아래 참고)
     sentry.ts / analytics.ts
   components/ui.ts       ← 레이아웃·로딩·에러 화면 렌더
 functions/index.js       ← 백엔드 전체 (단일 `api` 함수)
-public/editor/           ← 에디터 빌드 산출물 (직접 수정 금지)
-public/rhwp_bg.wasm      ← 호스트용 WASM (hwp-renderer 전용 → 현재 미사용)
+public/editor/           ← 에디터 빌드 산출물 (직접 수정 금지). WASM 포함
 firestore.rules          ← 클라이언트 접근 전면 차단
 scripts/                 ← 빌드·배포·업스트림 갱신 도구
 dist/                    ← 빌드 출력 (public/ 이 그대로 복사됨)
@@ -200,4 +198,4 @@ confirm("변경 사항을 저장하시겠습니까?")
 4. **함수는 CI 가 배포하지 않는다** — 수동 배포 필수. [deployment.md](./deployment.md)
 5. **Drive "Open with" 첫 계정선택 팝업은 제거 불가** — 앱은 `/drive/open?state=…` 로 실행만 된다.
 6. **HWPX 편집** — 지원하지만 재직렬화 시 구조는 보존해도 시각 충실도는 보장되지 않는다. 첫 편집 시 사본 편집을 권하는 안내 토스트가 1회 뜬다.
-7. **`hwp-renderer.ts` 는 현재 어디서도 import 되지 않는다.** `@rhwp/core` 를 직접 로드해 SVG 로 렌더하는 모듈인데(호스트 자체 미리보기용으로 보인다), 지금 미리보기는 뷰어 모드 iframe(`?mode=view`)이 담당한다. `public/rhwp_bg.wasm` 도 이 모듈 전용이다. 되살릴 계획이 없다면 정리 후보.
+7. **호스트 앱은 WASM 을 직접 로드하지 않는다.** HWP 파싱·렌더링은 전부 에디터 iframe 안에서 일어난다. 미리보기도 뷰어 모드 iframe(`?mode=view`)이 담당한다. `@rhwp/core` 를 직접 로드하던 `hwp-renderer.ts` 와 그 전용 자산 `public/rhwp_bg.wasm` 은 미사용이라 제거했다. `@rhwp/core` 의존성은 남아 있는데, 이건 `scripts/rhwp-version-diff.mjs` 가 비교 기준(`node_modules/@rhwp/core`)으로 쓰기 때문이다.

@@ -25,13 +25,11 @@ src/                     ← 호스트 앱 (Vite + TypeScript strict)
     auth.ts              ← Drive 인증 클라이언트 (/api/* 호출)
     drive.ts             ← Drive API v3 헬퍼
     editor-utils.ts      ← 에디터 iframe 브릿지 (postMessage)
-    hwp-renderer.ts      ← @rhwp/core 직접 로드 → SVG (⚠️ 현재 미사용)
     sentry.ts            ← 에러 추적(민감 파라미터 스크럽)
     analytics.ts         ← GA4
   components/ui.ts
 functions/index.js       ← 백엔드. 단일 `api` 함수가 req.path 로 라우팅
-public/editor/           ← 에디터 빌드 산출물 (직접 수정 금지)
-public/rhwp_bg.wasm      ← 호스트 앱 미리보기용 WASM
+public/editor/           ← 에디터 빌드 산출물 (직접 수정 금지). WASM 포함
 scripts/                 ← 빌드·배포·업스트림 갱신 도구
 dist/                    ← 빌드 출력 (public/ 이 그대로 복사됨 → dist/editor/)
 ```

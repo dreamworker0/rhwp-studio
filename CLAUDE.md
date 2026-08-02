@@ -23,6 +23,7 @@
 
 ## 에디터 서브모듈 (날카로운 모서리)
 - `public/editor/`는 **직접 수정 금지**. `temp_editor/`(별도 git repo, custom 브랜치)에서 `npm run upstream:update`로만 재생성. 절차는 `/editor-update`.
+- ⚠️ **`@rhwp/core`·`@rhwp/editor`는 `0.7.3` 고정.** 0.8.x는 텍스트 배치 회귀(마침표 advance +147% → 행 앞이 한 칸 밀림)로 **보류 중이니 올리지 말 것.** 근거·실측·재검증 방법은 `docs/rhwp-0.8-regression.md`. 업스트림이 고쳤다면 `node scripts/rhwp-version-diff.mjs <문서.hwp> 1 --b=<새버전dir>`로 **숫자로 확인한 뒤에만** 올린다.
 
 ## 시크릿 (커밋 금지)
 - `.env`(루트): `VITE_GOOGLE_CLIENT_ID`(공개), `VITE_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`/`SENTRY_ORG`/`SENTRY_PROJECT`.

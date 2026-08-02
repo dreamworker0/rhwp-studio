@@ -35,6 +35,8 @@
 
 `VITE_GOOGLE_CLIENT_ID` / `VITE_GA_MEASUREMENT_ID` / `VITE_SENTRY_DSN` 은 워크플로에 인라인으로 박혀 있다(모두 클라이언트 번들에 노출되는 공개 식별자). `.env` 는 gitignore 라 CI 에 없으므로, 여기 없으면 빌드에서 누락된다.
 
+**머지 전 검증** — `deploy.yml` 은 `master` 푸시에서만 돌기 때문에 PR 단계에서는 아무것도 확인해 주지 않는다. 그 공백은 `build-check.yml`(`pull_request` 트리거)이 메운다. `npm ci` → `npm run build` → `node --check functions/index.js` 만 돌리고 **시크릿을 일절 쓰지 않는다** — 포크 PR 에서도 안전하게 돌리기 위한 의도적인 제약이다. 배포 워크플로에 `pull_request` 트리거를 붙이면 안 되는 이유이기도 하다.
+
 ### 2) Hosting — 수동 배포
 
 CI 를 거치지 않고 즉시 반영해야 할 때만.

@@ -59,6 +59,7 @@ firebase hosting:clone rhwp-studio:<previous-version-id> rhwp-studio:live
 - [ ] `firebase.json` WASM 헤더 규칙 유지 확인
 - [ ] 로컬 테스트 (`npm run dev`) 정상 동작
 - [ ] E2E 테스트 실행 (최소 `text-flow.test.mjs`)
+- [ ] **함수 배포 시**: `functions/.env` 존재 확인(`SENTRY_DSN`). gitignore 라 새 환경엔 없고, 없어도 배포는 성공하지만 런타임 env 가 덮어써져 **함수 Sentry 가 조용히 꺼진다** → `functions/.env.example` 참고
 
 ## firebase.json 핵심 설정
 

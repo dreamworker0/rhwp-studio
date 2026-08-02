@@ -1,210 +1,167 @@
----
-name: rhwp-studio
-description: rhwp-studio HWP 웹 에디터의 빌드, 배포, 디버깅, 운영 관리를 위한 스킬. 'rhwp-studio', 'HWP 에디터', 'WASM 에디터', '에디터 배포', '에디터 빌드' 등의 키워드가 나오면 이 스킬을 참조할 것.
----
+# rhwp-studio 운영 지침서
 
-# rhwp-studio 운영 관리 스킬
+> 이 문서는 참고용 운영 문서다. Claude Code 스킬로 등록돼 있지는 않다(스킬은 `.claude/skills/` 에 둬야 한다).
+> 실행 절차는 `/deploy`(`.claude/commands/deploy.md`)와 `/editor-update`(`.claude/commands/editor-update.md`)가 정본이고,
+> 프로젝트 규칙 요약은 루트 `CLAUDE.md` 에 있다.
 
-rhwp-studio는 WASM 기반 HWP 웹 에디터입니다. 이 스킬은 빌드, 배포, 디버깅, 운영 관리 절차를 정의합니다.
+## 이 레포가 무엇인가
 
----
+rhwp-studio 는 **한글 문서(.hwp/.hwpx)를 Google Drive 와 연동해 열람·편집하는 웹앱**이다.
 
-## 프로젝트 위치
+중요한 구분:
+
+- **이 레포 = 호스트 앱** — 랜딩 페이지, Drive 연동, 인증, 에디터를 감싸는 셸(`src/`).
+- **에디터 = 외부 산출물** — 업스트림 `@rhwp/editor` 를 빌드한 결과가 `public/editor/` 에 들어 있고, 호스트 앱이 **iframe 으로 임베드**한다. 에디터 소스는 이 레포에 없다(`temp_editor/`, gitignore, 로컬 전용).
+
+`public/editor/` 를 직접 수정하지 않는다. 갱신은 `/editor-update` 절차로만.
+
+## 프로젝트 구조
 
 ```
-d:\apps\rhwp\temp_editor\rhwp-studio\   ← 에디터 소스 (Vite + TypeScript)
-d:\apps\rhwp\temp_editor\pkg\           ← WASM 패키지 (@wasm/rhwp)
-d:\apps\rhwp\dist\editor\               ← 빌드 출력물
-d:\apps\rhwp\firebase.json              ← Firebase Hosting 설정
-d:\apps\rhwp\.firebaserc                ← Firebase 프로젝트 설정 (rhwp-studio)
+src/                     ← 호스트 앱 (Vite + TypeScript strict)
+  main.ts                ← 진입점. location.pathname 기반 라우팅
+  pages/                 ← Home, DriveOpen, DriveNew, Terms, Privacy, Support
+  lib/
+    auth.ts              ← Drive 인증 클라이언트 (/api/* 호출)
+    drive.ts             ← Drive API v3 헬퍼
+    editor-utils.ts      ← 에디터 iframe 브릿지 (postMessage)
+    hwp-renderer.ts      ← @rhwp/core WASM 직접 로드 → SVG 렌더(미리보기)
+    sentry.ts            ← 에러 추적(민감 파라미터 스크럽)
+    analytics.ts         ← GA4
+  components/ui.ts
+functions/index.js       ← 백엔드. 단일 `api` 함수가 req.path 로 라우팅
+public/editor/           ← 에디터 빌드 산출물 (직접 수정 금지)
+public/rhwp_bg.wasm      ← 호스트 앱 미리보기용 WASM
+scripts/                 ← 빌드·배포·업스트림 갱신 도구
+dist/                    ← 빌드 출력 (public/ 이 그대로 복사됨 → dist/editor/)
 ```
+
+로컬 작업 경로는 레포 루트 `D:\apps\rhwp` 다. 모든 npm 명령은 루트에서 실행한다.
 
 ## 기술 스택
 
 | 항목 | 기술 |
 |------|------|
-| 프레임워크 | Vite 8 + TypeScript 6 |
-| 핵심 엔진 | Rust → WASM (`@wasm/rhwp`) |
-| 인증 | Google Identity Services (OAuth 2.0 Implicit Flow) |
+| 프론트 | Vite + TypeScript(strict), 빌드 출력 `dist/` |
+| 에디터 | `@rhwp/editor` **0.7.3 고정** — iframe 임베드 |
+| 핵심 엔진 | `@rhwp/core` **0.7.3 고정** (Rust → WASM) |
+| 인증 | **서버 기반 OAuth — authorization code + refresh token** |
 | 스토리지 | Google Drive API v3 |
-| 배포 | Firebase Hosting |
-| E2E 테스트 | Puppeteer Core (CDP 기반) |
-| 폰트 | Pretendard (로컬 WOFF2) |
+| 백엔드 | Firebase Functions 2세대, 리전 `asia-northeast3` |
+| 배포 | Hosting(CI 자동) + Functions(수동) — [deployment.md](./deployment.md) |
+| 검증 | `npm run build` (테스트·린트 스크립트 없음), `npm run smoke`(로컬) |
+| 에러 추적 | Sentry (프론트 `@sentry/browser`, 함수 `@sentry/node`) |
 
----
+⚠️ `@rhwp` 0.8.x 는 텍스트 배치 회귀로 **보류 중**이니 올리지 말 것 → [`../rhwp-0.8-regression.md`](../rhwp-0.8-regression.md)
+
+## 인증 흐름
+
+브라우저 implicit flow 가 아니다. **토큰 발급은 전적으로 백엔드가 한다.**
+
+```
+1) /api/auth/login     → Google 동의 화면으로 리다이렉트 (code flow, offline)
+2) /api/auth/callback  → code ⇄ access/refresh token 교환,
+                         refresh_token 을 Firestore 에 사용자별 저장,
+                         불투명 세션 ID 를 HttpOnly 쿠키로 발급
+3) /api/drive-token    → 세션 쿠키 → 단기 액세스 토큰 발급/반환
+4) /api/auth/logout    → 세션·refresh_token 폐기
+```
+
+- 브라우저에 있는 것은 **HttpOnly `__session` 쿠키(60일)** 와 **메모리에 캐시된 단기 액세스 토큰**뿐이다(`src/lib/auth.ts` 의 `cached`, 만료 1분 전까지 재사용). `sessionStorage` 에 토큰을 두지 않는다.
+- `refresh_token` · `client_secret` 은 클라이언트로 절대 나가지 않는다. `client_secret` 은 Secret Manager 에 있다.
+- ⚠️ **Firebase Hosting 은 `__session` 이름의 쿠키만 함수로 전달한다.** 다른 이름은 CDN 캐싱 때문에 제거되므로 쓸 수 없다.
+- Firestore(`driveUsers/{sub}`, `driveSessions/{sid}`, `oauthStates`)는 Admin SDK 로만 접근한다. 규칙상 클라이언트 직접 접근은 전면 차단(`allow read, write: if false`).
+- Drive "Open with" 실행 시 뜨는 첫 Google 계정선택 팝업은 제거할 수 없다(앱은 `/drive/open?state=…` URL 로 실행만 됨).
+
+## 에디터 iframe 브릿지
+
+호스트 앱과 에디터는 `postMessage` 로 통신한다(`src/lib/editor-utils.ts`, `src/pages/DriveOpen.ts`).
+
+| 메시지 | 방향 | 용도 |
+|---|---|---|
+| `loadFile` | 호스트 → 에디터 | 문서 바이트 전달·로드 |
+| `save` | 에디터 → 호스트 | 저장 요청 → Drive 업로드 |
+| `exportFile` | 호스트 → 에디터 | 다른 포맷으로 재직렬화 |
+
+읽기 전용 권한이면 `/editor/index.html?mode=view` 로 띄운다(메뉴바·툴바 숨김 — `scripts/post-build.js` 가 주입한 스크립트가 처리).
 
 ## 핵심 명령어
 
-### 개발 서버
+모두 **레포 루트**에서 실행한다.
 
 ```bash
-cd d:\apps\rhwp\temp_editor\rhwp-studio
-npm run dev
-# → http://localhost:7700
+npm run dev              # 개발 서버 → https://localhost:5173 (mkcert HTTPS)
+npm run build            # tsc + vite → dist/
+npm run smoke            # 에디터 스모크 테스트 (로컬 전용)
+node --check functions/index.js
+
+npm run upstream:check   # 업스트림 에디터 변경 확인   ┐
+npm run upstream:update  # 에디터 재생성               ├ 로컬 전용
+npm run verify:custom    # 커스텀 패치 유지 확인       │ (/editor-update)
+npm run sync:wasm        # pkg/ WASM 을 @rhwp/core 버전에 맞춤 ┘
 ```
 
-### 프로덕션 빌드
-
-```bash
-cd d:\apps\rhwp\temp_editor\rhwp-studio
-npm run build
-# tsc → vite build → dist/editor/
-```
-
-### Firebase 배포
-
-```bash
-cd d:\apps\rhwp
-firebase deploy --only hosting
-# → https://rhwp-studio.web.app
-# 에디터: https://rhwp-studio.web.app/editor/
-```
-
-### E2E 테스트
-
-```bash
-cd d:\apps\rhwp\temp_editor\rhwp-studio
-# 기본 테스트
-node e2e/text-flow.test.mjs
-# Drive & 에러 핸들링 테스트
-node e2e/drive-save-flow.test.mjs
-# 전체 시나리오
-node e2e/scenario-runner.mjs
-```
-
-> **E2E 환경 필수**: `CHROME_CDP` 환경 변수로 Chrome DevTools Protocol 엔드포인트 지정 필요.
-
----
-
-## 아키텍처 개요
-
-```
-main.ts (진입점)
-├── core/wasm-bridge.ts    ← WASM 브릿지 (문서 로드/저장/렌더링)
-├── core/drive-auth.ts     ← Google OAuth 토큰 관리
-├── core/drive-api.ts      ← Drive API 호출 (fetchWithRetry)
-├── core/auto-save.ts      ← 자동 저장 (5분/Drive 모드)
-├── core/event-bus.ts      ← 이벤트 버스 (document-modified 등)
-├── core/font-loader.ts    ← 웹폰트 로딩
-├── command/               ← 커맨드 시스템
-│   ├── registry.ts        ← 커맨드 등록
-│   ├── dispatcher.ts      ← 커맨드 실행
-│   └── commands/          ← file, edit, view, format, insert, table, page, tool
-├── ui/                    ← UI 컴포넌트
-│   ├── toolbar.ts         ← 메인 툴바
-│   ├── menu-bar.ts        ← 메뉴바
-│   ├── toast.ts           ← 토스트 알림
-│   ├── loading-overlay.ts ← 로딩 오버레이
-│   ├── offline-banner.ts  ← 오프라인 배너
-│   └── (각종 다이알로그)
-├── engine/                ← 렌더링 엔진
-│   ├── input-handler.ts
-│   ├── cell-selection-renderer.ts
-│   └── table-*-renderer.ts
-└── view/                  ← 뷰 레이어
-    ├── canvas-view.ts
-    └── ruler.ts
-```
-
----
+`npm run smoke` 는 `temp_editor/` 의 puppeteer-core 와 Chrome/Edge 를 쓰므로 **클라우드 세션에서는 돌지 않는다**. 검증 항목은 에디터 부팅·`loadFile` ack·pageCount·HWPX 왕복·웹폰트 무결성이다.
 
 ## 운영 워크플로우
 
-### 1. 기능 추가/수정 워크플로우
+### 기능 추가·수정
 
 ```
-1) 요구사항 파악 (어떤 커맨드/UI/렌더링 변경인지)
-2) `npm run dev`로 개발 서버 실행
-3) 코드 수정
-4) 브라우저에서 수동 테스트 (http://localhost:7700)
-5) `npm run build` — TypeScript + Vite 빌드 확인
-6) 관련 E2E 테스트 실행
-7) `firebase deploy --only hosting` 배포
+1) npm run dev 로 개발 서버 실행 → 브라우저에서 수동 확인
+2) npm run build 통과 확인 (유일한 자동 검증 수단)
+3) 함수를 고쳤으면 node --check functions/index.js
+4) npm run smoke (에디터 동작에 영향이 있는 변경일 때)
+5) 커밋 → master 푸시 시 CI 가 Hosting 자동 배포
+6) 함수를 고쳤으면 로컬에서 firebase deploy --only functions (CI 가 안 함)
 ```
 
-### 2. WASM 업데이트 워크플로우
+### 에디터·WASM 갱신
+
+`/editor-update` 절차를 따른다. 요점: `temp_editor/` 는 별도 git repo이므로 **재생성 전에 거기 미커밋 변경을 먼저 커밋**해야 rebase 때 유실되지 않는다. `sync:wasm` 이 JS 와 WASM 버전을 맞춘다 — JS 만 갱신하면 "JS 신버전 / WASM 구버전" 불일치로 저장이 깨진 전례가 있다(0.7.3→0.7.17).
+
+### 롤백
+
+[deployment.md 의 롤백 절](./deployment.md#롤백) 참고. Hosting 은 Console 에서 원클릭이지만 **함수는 원클릭 롤백이 없다** — 이전 커밋에서 재배포해야 한다.
+
+### Drive 연동 디버깅
 
 ```
-1) 새 WASM 빌드 파일을 d:\apps\rhwp\temp_editor\pkg\ 에 배치
-   - rhwp.js
-   - rhwp_bg.wasm
-   - rhwp.d.ts
-2) d:\apps\rhwp\temp_editor\rhwp-studio\public\ 에도 복사
-   - rhwp.js
-   - rhwp_bg.wasm
-3) npm run build — 빌드 성공 확인
-4) npm run dev — 로컬 테스트
-5) WASM 초기화 성공 여부 콘솔 로그 확인:
-   "[WasmBridge] WASM 초기화 완료 (rhwp X.X.X)"
-6) firebase deploy --only hosting
+1) 로그인 자체가 안 됨
+   - redirect_uri_mismatch → GCP Console 에 /api/auth/callback 등록 확인
+   - 콜백에서 500 → 함수 로그 확인. GOOGLE_CLIENT_SECRET 접근 권한 의심
+2) 로그인은 되는데 파일 접근 실패
+   - /api/drive-token 401 → 세션 만료·폐기. 재로그인 필요(NotAuthenticatedError)
+   - 쿠키가 함수까지 안 옴 → 쿠키 이름이 __session 인지 확인
+   - Drive 404 → fileId 유효성 / 공유 권한
+3) 배포 후 API 만 깨짐
+   - firebase.json 에서 /api/** rewrite 가 SPA fallback(**)보다 앞인지 확인
+   - 함수만 옛 코드일 가능성 — CI 는 Hosting 만 배포한다
 ```
 
-### 3. 긴급 롤백 워크플로우
-
-```
-1) Firebase Console → Hosting → 이전 버전 선택 → Rollback
-   또는
-   firebase hosting:clone rhwp-studio:<previous-version> rhwp-studio:live
-2) 원인 분석 후 수정 → 재배포
-```
-
-### 4. Google Drive 연동 디버깅
-
-```
-1) OAuth 에러 확인:
-   - redirect_uri_mismatch → Google Cloud Console에서 URI 등록
-   - 401/403 → 토큰 만료 (자동 재발급 동작 확인)
-2) Drive API 에러 확인:
-   - 404 → fileId 유효성
-   - 5xx → Google 서버 이슈 (자동 재시도 대기)
-3) 토큰 관리:
-   - sessionStorage에 rhwp_drive_token / rhwp_drive_token_expiry 저장
-   - 만료 5분 전 자동 갱신 트리거
-```
-
----
-
-## 주의 사항 및 제약
-
-> [!WARNING]
-> **HWPX 저장 제한**: HWPX 출처 문서는 현재 저장이 비활성화되어 있음 (#197 완전 변환기 완료 시까지). `notifyHwpxBetaIfNeeded()` 함수 참조.
-
-> [!IMPORTANT]
-> **WASM 파일 동기화**: `public/` 폴더의 `rhwp.js`, `rhwp_bg.wasm`과 `../pkg/` 의 파일이 일치해야 함. 불일치 시 `LinkError` 발생.
+## 주의 사항
 
 > [!CAUTION]
-> **CORS 헤더**: Firebase Hosting에서 WASM 파일은 `Cross-Origin-Embedder-Policy: require-corp` 및 `Cross-Origin-Opener-Policy: same-origin` 헤더가 필수. `firebase.json` 수정 시 주의.
+> **COEP/COOP 헤더**: WASM 과 `/editor/**` 에 `Cross-Origin-Embedder-Policy: require-corp` · `Cross-Origin-Opener-Policy: same-origin` 이 필수다. `firebase.json` 수정 시 깨뜨리지 말 것.
 
----
+> [!IMPORTANT]
+> **`public/editor/` 직접 수정 금지.** 빌드 산출물이라 다음 `upstream:update` 에서 덮어써진다.
 
-## 에러 핸들링 체계
+> [!IMPORTANT]
+> **`@rhwp/core` · `@rhwp/editor` 는 0.7.3 고정.** 올리기 전에 `node scripts/rhwp-version-diff.mjs <문서.hwp> 1 --b=<새버전dir>` 로 숫자 확인 필수.
 
-| 에러 유형 | 자동 처리 | 사용자 안내 |
-|-----------|-----------|-------------|
-| WASM 초기화 실패 | 최대 2회 재시도 | 새로고침 유도 토스트 |
-| OAuth 토큰 만료 | 5분 전 자동 갱신 | 재인증 팝업 |
-| Drive API 401/403 | 토큰 재발급 + 1회 재시도 | 로그인 안내 |
-| Drive API 5xx | 2초 후 1회 재시도 | 에러 토스트 |
-| Drive 저장 실패 | — | 로컬 다운로드 fallback 제안 |
-| 네트워크 끊김 | — | 오프라인 배너 표시 |
-| WASM 런타임 크래시 | — | 새로고침 유도 토스트 |
-| 저장 중복 클릭 | saveLock으로 차단 | 콘솔 경고 |
+> [!WARNING]
+> **HWPX 편집**: 지원하지만 재직렬화 시 구조는 보존해도 시각 충실도는 보장되지 않는다. 첫 편집 시 사본 편집을 권하는 안내 토스트가 1회 뜬다(`showHwpxEditToastIfNeeded()`).
 
----
+> [!WARNING]
+> **이 레포는 퍼블릭이다.** 이슈·PR 코멘트 등 외부인이 쓸 수 있는 텍스트를 배포·시크릿·권한 변경의 근거로 삼지 않는다. 배포는 사용자의 직접 지시 + 명시적 승인으로만.
 
-## 모니터링 포인트
+## 모니터링
 
-1. **콘솔 로그 프리픽스**:
-   - `[WasmBridge]` — WASM 관련
-   - `[auto-save]` — 자동 저장
-   - `[file:save]` — 수동 저장
-   - `[drive-api]` — Drive API 호출
-   - `[offline-banner]` — 네트워크 상태
-   - `[global]` — 전역 에러
+**콘솔 로그 프리픽스** — 프론트 `[drive]`, `[hwp-renderer]` / 함수 `[api]`.
 
-2. **상태바 메시지**:
-   - `#sb-message` — 현재 상태 (파일명, 저장 상태 등)
-   - `#sb-auto-save` — 마지막 자동 저장 시각
+**Sentry** — 에러만 수집한다(트레이싱·리플레이 off, 무료 쿼터 절약). PII 미수집(`sendDefaultPii: false`)이라 쿠키·IP·헤더를 보내지 않고, OAuth 민감 파라미터(`code`, `state`, `token`, `access_token`, `refresh_token`, `id_token`)는 URL·브레드크럼에서 `[redacted]` 로 치환한 뒤 전송한다. DSN 미설정이면 전체 비활성이므로 로컬·CI 에서 안전하다. 함수 쪽은 서버리스 종료 전 `Sentry.flush(2000)` 로 전송을 보장한다.
 
-3. **Firebase Hosting 모니터링**:
-   - Console: https://console.firebase.google.com/project/rhwp-studio/hosting
+**콘솔**
+- Hosting: https://console.firebase.google.com/project/rhwp-studio/hosting
+- Functions(로그): https://console.firebase.google.com/project/rhwp-studio/functions

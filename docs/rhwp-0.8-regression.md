@@ -139,6 +139,53 @@ rhwp 에 이미 TTF 에서 자동 추출된 정확한 표가 있다(`font_metric
 움직이지 않을 가능성이 높고, 실익은 줄 안쪽 정합(목차 줄 끝 약 21px)이다. 업스트림은 선례대로
 10k 쪽수 게이트를 통과시킨 뒤 제출하며, 다른 건의 게이트가 완주한 뒤 순서로 진행한다.
 
+### 교정이 들어오면 — 우리 쪽 검증 절차
+
+#4701 에서 **우리가 검증을 맡겠다고 회신**했다(함초롬바탕이 설치된 환경이라 독립 확인 경로가 된다).
+`haansoft_latin_override` 제거가 반영된 버전이 나오면 순서대로 돌린다. 전부 **로컬 전용**
+(temp_editor + 브라우저 + 한컴 오피스 필요).
+
+**① 폭 표가 실제 폰트와 맞는지** — `exit 0` 이면 교정 완료
+
+```bash
+npm run metric:check                         # 함초롬바탕 Regular
+npm run metric:check -- --bold               # Bold (k·q 가 Regular 와 다름)
+npm run metric:check -- --md                 # 이슈에 붙일 마크다운 표
+```
+
+표를 `temp_editor` 의 `text_measurement.rs` 에서 파싱하므로 업스트림이 고치면 결과가 따라간다.
+`--src=` 로 다른 경로를 지정할 수도 있다. 폰트 미설치는 감지해 `exit 2` 로 중단한다.
+
+**② 목차 줄 끝 21px 이 사라졌는지** — `·→·` 가 `0.3200` 으로 내려와야 한다(현재 `0.3329`)
+
+```bash
+npm run metric:probe                                    # biz_plan.hwp 1p, `.` 와 `·`
+npm run metric:probe -- <문서> --pages=1,2 --chars=.,·
+npm run metric:probe -- <문서> --core=node_modules/rhwpnext   # 후보 버전으로
+```
+
+**③ 미리보기 렌더 회귀 확인** — 실문서 여러 건을 교정 전/후로 픽셀 대조
+
+```bash
+git archive HEAD public/editor | tar -x -C .tmp/old      # 현재 빌드 보존
+npm run render:compare -- --editor=.tmp/old/public --label=before <문서…>
+npm run render:compare -- --editor=dist --label=after <문서…>
+npm run render:compare -- --diff=before,after
+```
+
+쪽수·줄바꿈이 그대로이고 차이가 글자 폭 수준이면 통과다(0.7.18 → 0.8.4 때 8 건에서 0.008~0.87%).
+세대가 다른 빌드끼리는 UI 크롬 높이가 달라 픽셀 수치가 과대하게 나오므로 `--crop` 을 조정한다.
+
+**④ 배치 변화 전수 대조** — `scripts/rhwp-version-diff.mjs` (upstream PR #4 에서 온 도구)
+
+```bash
+npm i rhwpnext@npm:@rhwp/core@<새버전>
+node scripts/rhwp-version-diff.mjs public/editor/samples/biz_plan.hwp 1 --b=node_modules/rhwpnext
+```
+
+⚠️ 이 도구의 출력은 **구간 폭**이다(공백·자동번호 여백 포함). advance 로 읽으면 #4701 의 오진을
+반복한다 — 순수 advance 는 ① 로 잰다.
+
 ### 우리 쪽 실제 영향
 
 - **0.8.4 업그레이드 판단은 강화됐다** — 문제로 지목된 자리에서 0.8.4 가 한글과 0.14px 차이다.

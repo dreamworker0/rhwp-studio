@@ -12,6 +12,9 @@
     "sync:wasm": "node scripts/sync-wasm.js",
     "verify:custom": "node scripts/verify-custom.js",
     "smoke": "node scripts/smoke-editor.mjs",
+    "metric:check": "node scripts/font-metric-cross-check.mjs",
+    "metric:probe": "node scripts/svg-advance-probe.mjs",
+    "render:compare": "node scripts/editor-render-compare.mjs",
     "upstream:check": "node scripts/upstream-check.js",
     "upstream:update": "node scripts/upstream-update.js"
   },

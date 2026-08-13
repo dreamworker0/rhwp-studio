@@ -23,3 +23,6 @@ Thumbs.db
 
 # Vite cache
 .vite/
+
+# 진단 스크립트 작업 공간 (editor-render-compare 스크린샷, git archive 로 복원한 과거 빌드 등)
+.tmp/

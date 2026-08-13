@@ -26,7 +26,12 @@
 - 버전: `@rhwp/core`는 `0.8.4`, **`@rhwp/editor`는 `0.7.18` 고정**(0.8.x lib의 MessagePort 연결이 레거시 `rhwp-request` 경로를 죽여 `loadFileDirectly`가 깨짐).
 - ⚠️ **글자폭 배치는 0.7.18부터 WASM 내부 메트릭**이다(그 전 `0.7.3`은 호스트 콜백 `globalThis.measureTextWidth`에 위임). **`0.7.3`을 정답 기준으로 삼지 말 것** — 자동번호 여백을 흘려 한글 대비 좁다(upstream #4701에서 확인).
 - ⚠️ SVG 미리보기(`renderPageSvg`)는 **가운뎃점 `·` advance가 +4.1%** 라 점선 리더가 긴 목차 줄에서 줄 끝이 약 21px 밀린다(upstream [#4701](https://github.com/edwardkim/rhwp/issues/4701), 업스트림이 교정 예정). 배치 측정 시 `x[i+1]-x[i]`는 공백·자동번호 여백을 포함하므로 **advance로 읽지 말 것.** 경위는 `docs/rhwp-0.8-regression.md`.
-- 버전 올릴 땐 `node scripts/rhwp-version-diff.mjs <문서.hwp> 1 --b=<새버전dir>`로 배치 변화를 **숫자로 확인한 뒤** 올린다(브라우저 + `playwright-core` 필요).
+- 버전 올릴 땐 배치 변화를 **숫자로 확인한 뒤** 올린다. 진단 도구(전부 로컬 전용, 브라우저 필요):
+  - `npm run metric:check` — 설치된 실제 폰트 advance ↔ upstream 폭 표 대조. exit 0이면 일치. `--bold`, `--md`
+  - `npm run metric:probe` — `renderPageSvg`의 글자별 **구간 폭**(공백·자동번호 여백 포함, advance 아님)
+  - `npm run render:compare` — 에디터 빌드 간 렌더 스크린샷 + 픽셀 대조(`--label` → `--diff=a,b`)
+  - `node scripts/rhwp-version-diff.mjs <문서.hwp> 1 --b=<새버전dir>` — 글리프 배치 전수 대조(`playwright-core` 필요)
+  - 절차와 판정 기준은 `docs/rhwp-0.8-regression.md`의 "교정이 들어오면" 절.
 
 ## 시크릿 (커밋 금지)
 - `.env`(루트): `VITE_GOOGLE_CLIENT_ID`(공개), `VITE_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`/`SENTRY_ORG`/`SENTRY_PROJECT`.

@@ -3,7 +3,8 @@
 **결론(2026-08-13 개정): `@rhwp/core` 는 `0.8.4`. 아래 분석의 기전은 맞지만 버전 귀속이 틀렸었다 —
 호스트 계측 콜백이 사라진 것은 0.8.x 가 아니라 `0.7.3` → `0.7.18` 사이다.**
 
-업스트림 이슈: 제출 예정 ([edwardkim/rhwp](https://github.com/edwardkim/rhwp/issues) — 번호 확정 시 이 줄을 갱신할 것)
+업스트림 이슈: [edwardkim/rhwp#4701](https://github.com/edwardkim/rhwp/issues/4701) (2026-08-13 제출) —
+함초롬바탕 마침표(U+002E) 내부 메트릭이 실제 폰트 advance의 2.6배. `renderPageSvg` 경로에 남은 건.
 
 ---
 

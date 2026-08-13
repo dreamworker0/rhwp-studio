@@ -284,6 +284,10 @@ export class HwpDocument {
      */
     exportHwp(): Uint8Array;
     /**
+     * 문서를 HWP5 EncryptVersion 4 비밀번호 문서로 내보낸다.
+     */
+    exportHwpWithPassword(password: string): Uint8Array;
+    /**
      * 어댑터 적용 + HWP 직렬화 + 자기 재로드 검증을 수행하고 결과를 JSON 으로 반환한다 (#178).
      *
      * 반환 JSON:
@@ -304,6 +308,10 @@ export class HwpDocument {
      * Document IR을 HWPX(ZIP+XML)로 직렬화하여 반환한다.
      */
     exportHwpx(): Uint8Array;
+    /**
+     * 문서를 ODF AES-256-CBC/PBKDF2 비밀번호 보호 HWPX로 내보낸다.
+     */
+    exportHwpxWithPassword(password: string): Uint8Array;
     /**
      * 선택 영역을 HTML 문자열로 변환한다 (본문).
      */
@@ -940,6 +948,9 @@ export class HwpDocument {
     insertEquation(section_idx: number, para_idx: number, char_offset: number, script: string, font_size: number, color: number): string;
     /**
      * 머리말/꼬리말 문단에 필드 마커를 삽입한다.
+     *
+     * 반환 JSON: `charOffset`은 삽입 후 커서 좌표, `insertedAt`/`insertedLength`는
+     * history 역연산용 실제 모델 텍스트 범위다.
      */
     insertFieldInHf(section_idx: number, is_header: boolean, apply_to: number, hf_para_idx: number, char_offset: number, field_type: number): string;
     /**
@@ -1608,7 +1619,9 @@ export interface InitOutput {
     readonly hwpdocument_exportControlHtml: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
     readonly hwpdocument_exportHwp: (a: number) => [number, number, number, number];
     readonly hwpdocument_exportHwpVerify: (a: number) => [number, number, number, number];
+    readonly hwpdocument_exportHwpWithPassword: (a: number, b: number, c: number) => [number, number, number, number];
     readonly hwpdocument_exportHwpx: (a: number) => [number, number, number, number];
+    readonly hwpdocument_exportHwpxWithPassword: (a: number, b: number, c: number) => [number, number, number, number];
     readonly hwpdocument_exportSelectionHtml: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
     readonly hwpdocument_exportSelectionInCellHtml: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => [number, number, number, number];
     readonly hwpdocument_findNearestControlBackward: (a: number, b: number, c: number, d: number) => [number, number];

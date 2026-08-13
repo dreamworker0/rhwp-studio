@@ -161,8 +161,12 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
         if (statusText) statusText.textContent = '■ 드라이브에 저장 중...'
 
         try {
-          // iframe에 exportFile 요청
-          const exportData = await new Promise<{ buffer: number[], fileName: string, mimeType: string }>((resolve, reject) => {
+          // 에디터 0.8.0부터 커스텀 exportFile RPC 대신 upstream exportHwp/exportHwpx 로
+          // 현재 문서 바이너리를 pull 한다(출처 포맷 기준). 응답 result 는 number[].
+          const isHwpxDoc = docFormat === 'hwpx'
+          const exportMethod = isHwpxDoc ? 'exportHwpx' : 'exportHwp'
+          const exportMime = isHwpxDoc ? 'application/hwp+zip' : 'application/x-hwp'
+          const exportedArray = await new Promise<number[]>((resolve, reject) => {
             const msgId = Date.now() + Math.random()
             const timeout = setTimeout(() => {
               window.removeEventListener('message', handler)
@@ -185,17 +189,17 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
 
             window.addEventListener('message', handler)
             iframe.contentWindow!.postMessage(
-              { type: 'rhwp-request', id: msgId, method: 'exportFile', params: {} },
+              { type: 'rhwp-request', id: msgId, method: exportMethod, params: {} },
               location.origin,
             )
           })
 
           // number[] → Uint8Array 변환 후 업로드
-          const fileBytes = new Uint8Array(exportData.buffer)
+          const fileBytes = new Uint8Array(exportedArray)
           await uploadFile(
-            exportData.fileName || meta.name,
+            meta.name,
             fileBytes,
-            exportData.mimeType || meta.mimeType || 'application/x-hwp',
+            meta.mimeType || exportMime,
             fileId,
           )
 
@@ -275,7 +279,7 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
 
     // [cache-bust] /editor/index.html 이 CDN 엣지에 옛 버전으로 고착될 수 있어(max-age 잔재)
     // 버전 쿼리로 새 캐시 키를 강제한다. 배포 시 EDITOR_CACHE_TAG 만 올리면 됨.
-    const EDITOR_CACHE_TAG = 'v20260730'
+    const EDITOR_CACHE_TAG = 'v20260813'
     const studioUrl = viewOnly
       ? `/editor/index.html?mode=view&${EDITOR_CACHE_TAG}`
       : `/editor/index.html?${EDITOR_CACHE_TAG}`

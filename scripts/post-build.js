@@ -13,7 +13,8 @@
  * 2. fonts 실복사 — upstream의 rhwp-studio/public/fonts는 심볼릭링크라
  *    Windows(core.symlinks=false)에서 15바이트 텍스트 파일로 체크아웃되고,
  *    그대로 산출물에 복사돼 웹폰트 전체 404(OTS 에러)가 됨.
- *    → temp_editor/web/fonts 를 public/editor/fonts 로 실제 복사한다.
+ *    → temp_editor 의 폰트 원본을 public/editor/fonts 로 실제 복사한다.
+ *    원본 경로는 upstream 버전에 따라 다르다: 0.7.x = web/fonts, 0.8.x = assets/fonts.
  * ─────────────────────────────────────────────────────────────────────────
  */
 
@@ -24,13 +25,19 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const EDITOR_HTML = resolve(ROOT, 'public', 'editor', 'index.html');
-const FONTS_SRC = resolve(ROOT, 'temp_editor', 'web', 'fonts');
+// 폰트 원본 위치는 upstream 버전마다 다르다 (0.8.x에서 web/ → assets/ 로 이동).
+// 버전 간 이동/롤백에도 조용히 0개 복사되지 않도록 후보를 순서대로 찾는다.
+const FONTS_SRC_CANDIDATES = [
+  resolve(ROOT, 'temp_editor', 'assets', 'fonts'), // 0.8.x
+  resolve(ROOT, 'temp_editor', 'web', 'fonts'),    // 0.7.x
+];
 const FONTS_DEST = resolve(ROOT, 'public', 'editor', 'fonts');
 
-/** fonts가 깨진 심볼릭링크(일반 파일)면 지우고, web/fonts에서 실제 파일로 복사 */
+/** fonts가 깨진 심볼릭링크(일반 파일)면 지우고, 원본에서 실제 파일로 복사 */
 function syncFonts() {
-  if (!existsSync(FONTS_SRC)) {
-    console.log('  - fonts 동기화: 소스 없음 (temp_editor/web/fonts) — 건너뜀');
+  const FONTS_SRC = FONTS_SRC_CANDIDATES.find((p) => existsSync(p));
+  if (!FONTS_SRC) {
+    console.log(`  - fonts 동기화: 소스 없음 (${FONTS_SRC_CANDIDATES.join(', ')}) — 건너뜀`);
     return;
   }
   if (existsSync(FONTS_DEST) && !statSync(FONTS_DEST).isDirectory()) {

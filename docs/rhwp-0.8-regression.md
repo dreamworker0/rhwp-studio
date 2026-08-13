@@ -5,6 +5,7 @@
 
 업스트림 이슈: [edwardkim/rhwp#4701](https://github.com/edwardkim/rhwp/issues/4701) (2026-08-13 제출)
 — **마침표로 제출했으나 메인테이너 검증으로 가운뎃점(U+00B7)으로 재분류됨.** 아래 §정정-2 참조.
+임베드 환경 구조 개선 제안은 [#4709](https://github.com/edwardkim/rhwp/issues/4709) 로 분리.
 
 ---
 

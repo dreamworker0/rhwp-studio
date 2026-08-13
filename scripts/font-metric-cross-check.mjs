@@ -72,8 +72,24 @@ if (!existsSync(SRC)) {
 const src = readFileSync(SRC, 'utf-8');
 const tableMatch = src.match(/const\s+HAANSOFT_BATANG_ASCII\s*:\s*\[f64;\s*\d+\]\s*=\s*\[([\s\S]*?)\];/);
 const TABLE = tableMatch ? (tableMatch[1].replace(/\/\/[^\n]*/g, '').match(/-?\d+\.\d+/g) ?? []).map(Number) : [];
+
+// upstream #4701 교정(머지 cdeb1ba)으로 오버라이드가 통째로 제거됐다. 상수가 없으면
+// 그게 곧 "고쳐진 상태"다 — 실패가 아니라 통과로 보고한다.
+const OVERRIDE_GONE = !tableMatch && !/fn\s+haansoft_latin_override/.test(src);
+if (OVERRIDE_GONE) {
+  console.log('━'.repeat(64));
+  console.log('✅ 함초롬바탕 라틴 오버라이드가 제거된 소스입니다 (#4701 교정 반영)');
+  console.log('━'.repeat(64));
+  console.log(`\n   출처 : ${SRC}`);
+  console.log('   이제 라틴 폭은 폰트 자신의 hmtx(자동 생성 font_metrics_data)를 직접 쓰므로');
+  console.log('   대조할 별도 표가 없습니다. 배치가 실제로 바뀌었는지는 런타임에서 확인하세요:');
+  console.log('     npm run metric:probe        # ·→· 가 0.3329 → 0.3200 em 인지');
+  console.log('     npm run render:compare      # 실문서 렌더 회귀\n');
+  process.exit(0);
+}
 if (TABLE.length !== 95) {
   console.error(`HAANSOFT_BATANG_ASCII 파싱 실패 (길이 ${TABLE.length}). upstream 구조가 바뀐 것일 수 있습니다.`);
+  console.error('  오버라이드가 제거된 소스라면 fn haansoft_latin_override 도 함께 사라져야 합니다 — 확인 필요.');
   process.exit(2);
 }
 const midMatch = src.match(/c\s*==\s*'\\u\{00B7\}'\s*\{\s*return\s+Some\(([\d.]+)\)/);

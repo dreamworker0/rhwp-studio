@@ -23,6 +23,9 @@
 
 ## 에디터 서브모듈 (날카로운 모서리)
 - `public/editor/`는 **직접 수정 금지**. `temp_editor/`(별도 git repo, custom 브랜치)에서 `npm run upstream:update`로만 재생성. 절차는 `/editor-update`.
+- 버전: `@rhwp/core`는 `0.8.4`, **`@rhwp/editor`는 `0.7.18` 고정**(0.8.x lib의 MessagePort 연결이 레거시 `rhwp-request` 경로를 죽여 `loadFileDirectly`가 깨짐).
+- ⚠️ **글자폭 배치는 0.7.18부터 WASM 내부 메트릭**이다(그 전 `0.7.3`은 호스트 콜백 `globalThis.measureTextWidth`에 위임). SVG 미리보기 경로에 마침표 advance 편차가 남아 있다 — 0.8.x가 만든 게 아니라 0.7.18부터의 이월. 실측·경위는 `docs/rhwp-0.8-regression.md`.
+- 버전 올릴 땐 `node scripts/rhwp-version-diff.mjs <문서.hwp> 1 --b=<새버전dir>`로 배치 변화를 **숫자로 확인한 뒤** 올린다(브라우저 + `playwright-core` 필요).
 
 ## 시크릿 (커밋 금지)
 - `.env`(루트): `VITE_GOOGLE_CLIENT_ID`(공개), `VITE_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`/`SENTRY_ORG`/`SENTRY_PROJECT`.

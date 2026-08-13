@@ -1,0 +1,48 @@
+name: Build check (PR)
+
+# PR 용 검증 전용 워크플로 — 배포하지 않는다.
+# 배포(deploy.yml)는 master 푸시에서만 돌기 때문에, 그대로 두면 머지 전에
+# 빌드가 깨졌는지 확인할 자동 장치가 없다. 이 워크플로가 그 공백을 메운다.
+#
+# ⚠️ 시크릿을 일절 쓰지 않는다. 포크에서 올라온 PR 에서도 안전하게 돌리기 위한
+#    의도적인 제약이다. (deploy.yml 은 FIREBASE_SERVICE_ACCOUNT 를 쓰므로
+#    pull_request 트리거를 붙이면 안 된다.)
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 같은 PR 에 연속으로 푸시하면 이전 실행은 취소한다.
+concurrency:
+  group: build-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # .env 를 주입하지 않는다. VITE_* 가 없으면 GA·Sentry 가 비활성으로 빌드될 뿐
+      # 빌드 자체는 통과하므로, 컴파일 검증 목적에는 이걸로 충분하다.
+      # (진짜 배포 번들은 deploy.yml 이 공개 식별자를 주입해 따로 만든다.)
+      - name: Build
+        run: npm run build
+
+      # 함수는 번들링되지 않아 tsc 검증 대상이 아니다. 문법 오류만이라도 잡는다.
+      # (node --check 는 의존성 설치가 필요 없다.)
+      - name: Check functions syntax
+        run: node --check functions/index.js

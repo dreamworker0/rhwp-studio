@@ -11,6 +11,14 @@
  *  4. HWPX 왕복 — .hwpx 로드 → exportHwpx(HWPX 재직렬화) → 재로드 시
  *     pageCount 동일 (HWPX 편집·저장 경로 검증)
  *  5. 웹폰트 무결성 — fonts/*.woff2 요청이 HTML로 응답되거나(OTS 에러) 404가 아님
+ *  6. 치명적 콘솔 에러 없음 — WASM 초기화 실패, 미정의 심볼(ReferenceError) 등
+ *     빌드가 깨졌음을 뜻하는 에러가 하나라도 있으면 실패시킨다.
+ *     ⚠️ 이 게이트가 필요한 이유: 에디터 빌드의 `tsc && vite build` 에서 tsc 단계가
+ *        TypeScript 7(tsgo)에서 명백한 타입 오류에도 exit 0 을 반환해 사실상 무력하다.
+ *        업스트림 머지 잔재(import 없이 남은 참조 등)는 타입체크를 그냥 통과하고
+ *        런타임에서만 드러나므로 여기서 잡는다. 실제 사례: 0.8.4→0.8.6 머지 때
+ *        `disconnectSubsecondDevtools is not defined` 로 WASM 초기화가 3회 전부
+ *        실패했는데도 스모크가 '통과'로 찍혔다.
  *
  * 요구사항: Chrome 또는 Edge 설치 (CHROME_PATH 환경변수로 재정의 가능).
  * puppeteer-core는 temp_editor/rhwp-studio의 것을 재사용한다(별도 설치 불필요).
@@ -28,6 +36,15 @@ const DIST = resolve(ROOT, 'dist');
 const SAMPLE_URL = '/editor/samples/issue1949_giant_cell_nested_tables_perf.hwp';
 const SAMPLE_HWPX_URL = '/editor/samples/form-002.hwpx';
 const ACK_TIMEOUT_MS = 60_000;
+
+// 콘솔 error 중 "빌드가 깨졌다"를 뜻하는 것들 — 하나라도 걸리면 스모크 실패.
+// 나머지 콘솔 에러(favicon 404, 렌더 레이스 가드 로그 등)는 참고용으로만 출력한다.
+const FATAL_CONSOLE_PATTERNS = [
+  /WASM 초기화 실패/,   // [WasmBridge] 재시도 실패 / [main] 초기화 실패
+  /ReferenceError/,      // 머지 잔재: import 없이 남은 참조
+  /is not defined/,      // 위와 같은 원인의 다른 표기
+  /is not a function/,   // API가 바뀐 채 호출부만 남은 경우
+];
 
 // puppeteer-core는 에디터 서브모듈 e2e 의존성을 재사용
 const require_ = createRequire(resolve(ROOT, 'temp_editor', 'rhwp-studio', 'package.json'));
@@ -189,10 +206,14 @@ try {
   // 콘솔·네트워크 감시: OTS(폰트) 에러와 폰트 404를 잡는다
   const fontProblems = [];
   const consoleErrors = [];
+  const fatalErrors = [];
   page.on('console', (m) => {
     const text = m.text();
     if (/OTS parsing error|Failed to decode downloaded font/i.test(text)) fontProblems.push(text);
-    else if (m.type() === 'error') consoleErrors.push(text);
+    else if (m.type() === 'error') {
+      if (FATAL_CONSOLE_PATTERNS.some((re) => re.test(text))) fatalErrors.push(text);
+      else consoleErrors.push(text);
+    }
   });
   page.on('response', (r) => {
     const url = r.url();
@@ -230,7 +251,15 @@ try {
 
   console.log('   [4/4] 웹폰트/콘솔 점검...');
   if (fontProblems.length) fail(`폰트 문제 ${fontProblems.length}건:\n     ${fontProblems.slice(0, 5).join('\n     ')}`);
-  console.log(`         ✓ OTS/폰트 에러 없음 (콘솔 error ${consoleErrors.length}건은 참고용)`);
+  if (fatalErrors.length) {
+    fail(
+      `치명적 콘솔 에러 ${fatalErrors.length}건 — 빌드가 깨졌다:\n     `
+      + fatalErrors.slice(0, 5).map((t) => t.slice(0, 200)).join('\n     ')
+      + '\n\n   에디터 빌드의 tsc 단계는 게이트가 되지 못한다(TypeScript 7 이슈).'
+      + '\n   업스트림 머지 직후라면 충돌 해결에서 남은 참조를 먼저 의심할 것.'
+    );
+  }
+  console.log(`         ✓ OTS/폰트 에러 없음, 치명적 콘솔 에러 없음 (기타 콘솔 error ${consoleErrors.length}건은 참고용)`);
   if (consoleErrors.length) {
     console.log('         (참고) 콘솔 에러:');
     consoleErrors.slice(0, 5).forEach((t) => console.log(`           - ${t.slice(0, 160)}`));

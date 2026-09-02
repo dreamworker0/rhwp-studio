@@ -25,7 +25,7 @@
     "vite-plugin-mkcert": "^2.0.0"
   },
   "dependencies": {
-    "@rhwp/core": "^0.8.4",
+    "@rhwp/core": "^0.8.6",
     "@rhwp/editor": "^0.7.18",
     "@sentry/browser": "^10.61.0"
   }

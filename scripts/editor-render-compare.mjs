@@ -170,6 +170,27 @@ const port = server.address().port;
 const browser = await puppeteer.launch({
   headless: true, executablePath: resolveChrome(), args: ['--no-sandbox', '--disable-gpu'],
 });
+/**
+ * 에디터 iframe 안의 "로컬 글꼴 감지" 모달을 '대체 글꼴로 보기'로 닫는다.
+ * 모달이 없으면 아무것도 하지 않고 false 를 돌려준다.
+ */
+async function dismissFontModal(page) {
+  for (const frame of page.frames()) {
+    try {
+      const hit = await frame.evaluate(() => {
+        const wanted = ['대체 글꼴로 보기', '대체 글꼴'];
+        const nodes = Array.from(document.querySelectorAll('button, [role="button"], .btn'));
+        const target = nodes.find((el) => wanted.some((w) => (el.textContent || '').includes(w)));
+        if (!target) return false;
+        target.click();
+        return true;
+      });
+      if (hit) return true;
+    } catch { /* cross-origin 등 — 다음 프레임 */ }
+  }
+  return false;
+}
+
 try {
   for (const d of docs) {
     currentDoc = resolve(d);
@@ -180,6 +201,13 @@ try {
     await page.goto(`http://127.0.0.1:${port}/__h.html`, { waitUntil: 'load', timeout: 60_000 });
     await page.waitForFunction('window.__s && window.__s.phase === "done"', { timeout: 180_000, polling: 500 });
     const s = await page.evaluate('window.__s');
+    // 빌드 간 상태 정규화 — "로컬 글꼴 감지" 모달을 닫는다.
+    //   0.8.4는 로드 직후 이 모달을 띄우고 0.8.6은 띄우지 않는다. 그대로 찍으면
+    //   한쪽은 문서가 모달에 가린 채 대체 글꼴로, 다른 쪽은 정상 렌더로 캡처돼
+    //   픽셀 대조가 통째로 무효가 된다(실제로 80% 차이로 나왔다).
+    //   헤드리스에서는 Local Font Access 권한을 줄 수 없으므로 '대체 글꼴로 보기'로 통일.
+    const dismissed = await dismissFontModal(page);
+    if (dismissed) await new Promise((r) => setTimeout(r, 800));
     await new Promise((r) => setTimeout(r, 2500)); // 렌더 안정화
     const name = `${safe(basename(currentDoc))}__${LABEL}.png`;
     await (await page.$('#ed')).screenshot({ path: join(OUT, name) });

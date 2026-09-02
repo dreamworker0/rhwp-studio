@@ -15,6 +15,11 @@
  *    그대로 산출물에 복사돼 웹폰트 전체 404(OTS 에러)가 됨.
  *    → temp_editor 의 폰트 원본을 public/editor/fonts 로 실제 복사한다.
  *    원본 경로는 upstream 버전에 따라 다르다: 0.7.x = web/fonts, 0.8.x = assets/fonts.
+ * 3. 사용되지 않는 wasm-bindgen 잔재 제거 — upstream의 rhwp-studio/public/에는
+ *    구버전 rhwp.js / rhwp_bg.wasm(+ .d.ts)이 남아 있고, vite가 publicDir 복사로
+ *    산출물에 그대로 넣는다. 실제 로드되는 WASM은 번들된 assets/rhwp_bg-<hash>.wasm
+ *    이라 이 파일들은 어디서도 참조되지 않는다(구버전이라 헷갈리기까지 한다).
+ *    → 빌드마다 지운다. 3.8MB 절약 + 버전 오인 방지.
  * ─────────────────────────────────────────────────────────────────────────
  */
 
@@ -32,6 +37,10 @@ const FONTS_SRC_CANDIDATES = [
   resolve(ROOT, 'temp_editor', 'web', 'fonts'),    // 0.7.x
 ];
 const FONTS_DEST = resolve(ROOT, 'public', 'editor', 'fonts');
+
+// publicDir 잔재 — 번들이 참조하지 않는 wasm-bindgen 산출물.
+// (실제 로드 대상은 assets/rhwp_bg-<hash>.wasm 이며 index.html/번들에서만 참조된다)
+const STALE_ARTIFACTS = ['rhwp.js', 'rhwp.d.ts', 'rhwp_bg.wasm', 'rhwp_bg.wasm.d.ts'];
 
 /** fonts가 깨진 심볼릭링크(일반 파일)면 지우고, 원본에서 실제 파일로 복사 */
 function syncFonts() {
@@ -55,6 +64,20 @@ function syncFonts() {
   }
   const total = readdirSync(FONTS_DEST).length;
   console.log(`  ✓ fonts 동기화: ${copied}개 복사 (총 ${total}개 파일)`);
+}
+
+/** 번들이 참조하지 않는 publicDir 잔재(구버전 wasm-bindgen 산출물) 제거 */
+function pruneStaleArtifacts() {
+  const removed = [];
+  for (const name of STALE_ARTIFACTS) {
+    const target = resolve(ROOT, 'public', 'editor', name);
+    if (!existsSync(target)) continue;
+    rmSync(target, { force: true });
+    removed.push(name);
+  }
+  console.log(removed.length
+    ? `  ✓ 미사용 잔재 제거: ${removed.join(', ')}`
+    : '  - 미사용 잔재: 없음 (건너뜀)');
 }
 
 // ─── 주입할 커스터마이즈 블록 ──────────────────────────────────────────
@@ -115,6 +138,7 @@ console.log(`   대상: ${EDITOR_HTML}\n`);
 
 try {
   syncFonts();
+  pruneStaleArtifacts();
 
   const original = readFileSync(EDITOR_HTML, 'utf-8');
   const { result, patchCount } = injectCustomizations(original);

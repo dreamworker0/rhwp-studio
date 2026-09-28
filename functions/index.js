@@ -121,14 +121,6 @@ async function exchangeToken(params) {
 async function handleLogin(req, res) {
   const state = crypto.randomBytes(16).toString('hex');
   const ret = safeReturnPath(req.query.return);
-  // state(CSRF) + 복귀 경로를 Firestore 에 단기 저장.
-  // (Hosting 이 '__session' 외 쿠키를 제거하므로 state 를 쿠키로 못 쓴다.)
-  await db.collection('oauthStates').doc(state).set({
-    ret,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    // Firestore TTL 정책(expireAt)으로 버려진 state 문서를 자동 정리.
-    expireAt: admin.firestore.Timestamp.fromMillis(Date.now() + STATE_TTL_MS),
-  });
 
   // force=1 일 때만 동의/계정선택을 강제(refresh_token 폐기 복구용).
   // 기본은 prompt 미지정 → 이미 동의·로그인된 사용자는 무음 리다이렉트(팝업 없음).
@@ -141,6 +133,28 @@ async function handleLogin(req, res) {
       ? hintRaw
       : null;
 
+  // 동의만 강제(계정선택 없이). refresh_token 이 없는 사용자용.
+  // Workspace Marketplace 설치로 스코프가 이미 승인된 새 계정은 prompt 없이 가면
+  // Google 이 동의 화면을 건너뛰고 refresh_token 을 주지 않는다 → 첫 로그인이 튕긴다.
+  // hint(sub)가 있고 저장된 refresh_token 이 없으면 처음부터 동의를 받는다.
+  // hint 는 위조 가능하지만 결과는 "동의 화면이 한 번 더 뜬다"뿐이라 무해.
+  let consent = req.query.consent === '1';
+  if (!force && !consent && hint && /^\d{1,64}$/.test(hint)) {
+    const userDoc = await db.collection('driveUsers').doc(hint).get();
+    consent = !(userDoc.exists && userDoc.data().refreshToken);
+  }
+
+  // state(CSRF) + 복귀 경로를 Firestore 에 단기 저장.
+  // (Hosting 이 '__session' 외 쿠키를 제거하므로 state 를 쿠키로 못 쓴다.)
+  await db.collection('oauthStates').doc(state).set({
+    ret,
+    // 동의를 강제한 요청 — callback 의 refresh_token 재요청 루프 방지용.
+    prompted: force || consent,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    // Firestore TTL 정책(expireAt)으로 버려진 state 문서를 자동 정리.
+    expireAt: admin.firestore.Timestamp.fromMillis(Date.now() + STATE_TTL_MS),
+  });
+
   const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   url.searchParams.set('client_id', CLIENT_ID);
   url.searchParams.set('redirect_uri', REDIRECT_URI);
@@ -148,6 +162,7 @@ async function handleLogin(req, res) {
   url.searchParams.set('scope', SCOPES);
   url.searchParams.set('access_type', 'offline'); // refresh_token 요청
   if (force) url.searchParams.set('prompt', 'consent select_account');
+  else if (consent) url.searchParams.set('prompt', 'consent');
   if (hint) url.searchParams.set('login_hint', hint);
   url.searchParams.set('include_granted_scopes', 'true');
   url.searchParams.set('state', state);
@@ -200,15 +215,26 @@ async function handleCallback(req, res) {
     return;
   }
 
-  // refresh_token 은 최초 동의 때만 내려온다. 있으면 저장(merge).
+  // refresh_token 은 동의 화면을 거쳤을 때만 내려온다. 있으면 저장(merge).
+  const userRef = db.collection('driveUsers').doc(sub);
   if (tok.refresh_token) {
-    await db.collection('driveUsers').doc(sub).set(
+    await userRef.set(
       {
         refreshToken: tok.refresh_token,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       },
       { merge: true },
     );
+  } else if (!stateData.prompted) {
+    // 동의 화면 없이 통과했는데(예: Marketplace 설치로 사전 승인) 저장된 refresh_token 도 없으면
+    // 세션을 만들어도 /drive-token 이 no_refresh_token 으로 튕긴다.
+    // 앱으로 돌려보내지 말고 바로 동의 화면으로 한 번 더 보낸다(prompted 로 1회 제한).
+    const userDoc = await userRef.get();
+    if (!(userDoc.exists && userDoc.data().refreshToken)) {
+      const p = new URLSearchParams({ return: ret, login_hint: sub, consent: '1' });
+      res.redirect(302, `${APP_ORIGIN}/api/auth/login?${p.toString()}`);
+      return;
+    }
   }
 
   const sid = crypto.randomBytes(24).toString('hex');

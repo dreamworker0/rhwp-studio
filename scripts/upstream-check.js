@@ -25,10 +25,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const EDITOR_ROOT = resolve(__dirname, '..', 'temp_editor');           // 업스트림 클론 루트(.git 위치)
 const STUDIO_DIR = resolve(EDITOR_ROOT, 'rhwp-studio');
 
+// temp_editor 는 다른 Windows 계정 소유로 클론돼 git 이 "dubious ownership" 으로 거부한다.
+// 전역 safe.directory 를 건드리지 않고 이 스크립트의 git 호출에만 예외를 준다.
+const GIT = `git -c safe.directory="${EDITOR_ROOT.replace(/\\/g, '/')}"`;
+
 /** EDITOR_ROOT에서 git 명령 실행 후 stdout 문자열 반환 (실패 시 빈 문자열) */
 function git(cmd) {
   try {
-    return execSync(`git ${cmd}`, { cwd: EDITOR_ROOT, encoding: 'utf-8' }).trim();
+    return execSync(`${GIT} ${cmd}`, { cwd: EDITOR_ROOT, encoding: 'utf-8' }).trim();
   } catch {
     return '';
   }
@@ -49,7 +53,7 @@ if (!existsSync(resolve(EDITOR_ROOT, '.git')) || !existsSync(STUDIO_DIR)) {
 // 2. 원격 ref 갱신 (워킹트리 불변)
 console.log('\n[1/3] git fetch origin main (원격 추적 ref만 갱신)...');
 try {
-  execSync('git fetch origin main', { cwd: EDITOR_ROOT, stdio: 'inherit' });
+  execSync(`${GIT} fetch origin main`, { cwd: EDITOR_ROOT, stdio: 'inherit' });
 } catch {
   console.error('\n❌ fetch 실패 — 네트워크 또는 원격 설정을 확인하세요.');
   process.exit(1);

@@ -23,8 +23,9 @@
 
 ## 에디터 서브모듈 (날카로운 모서리)
 - `public/editor/`는 **직접 수정 금지**. `temp_editor/`(별도 git repo, custom 브랜치)에서 재생성. 절차는 `/editor-update`.
-- 버전: `@rhwp/core`는 `0.8.6`, **`@rhwp/editor`는 `0.7.18` 고정**(0.8.x lib의 MessagePort 연결이 레거시 `rhwp-request` 경로를 죽여 `loadFileDirectly`가 깨짐).
-- ⚠️ **큰 폭 업데이트는 `npm run upstream:update`(= `git rebase main`)를 그대로 쓰지 말 것.** 이 브랜치의 실제 관행은 **머지**다(0.7.18·0.8.2·0.8.4·0.8.6 전부 `git merge`). rebase는 2026-04 최초 커스텀 커밋부터 다시 재생해 그간의 재조정을 전부 버린다 — 0.8.6 때 rebase는 첫 커밋에서만 14헝크(+남은 5커밋), 머지는 **7파일 1헝크씩**이었다. 스크립트의 rebase 단계는 아직 안 고쳤다.
+- 버전: `@rhwp/core`는 `0.8.7`, **`@rhwp/editor`는 `0.7.18` 고정**(0.8.x lib의 MessagePort 연결이 레거시 `rhwp-request` 경로를 죽여 `loadFileDirectly`가 깨짐).
+- ⚠️ **큰 폭 업데이트는 `npm run upstream:update`(= `git rebase main`)를 그대로 쓰지 말 것.** 이 브랜치의 실제 관행은 **머지**다(0.7.18·0.8.2·0.8.4·0.8.6·0.8.7 전부 `git merge`). rebase는 2026-04 최초 커스텀 커밋부터 다시 재생해 그간의 재조정을 전부 버린다 — 0.8.6 때 rebase는 첫 커밋에서만 14헝크(+남은 5커밋), 머지는 **7파일 1헝크씩**이었다. 스크립트의 rebase 단계는 아직 안 고쳤다.
+- ⚠️ **0.8.7부터 upstream i18n(`data-i18n` 속성 + `t()`)이 들어왔다.** `initI18n()`이 `data-i18n` 달린 라벨을 카탈로그 문구로 **덮어쓰므로**, 커스텀 라벨(저장 4종 "구글 드라이브에 저장"/"PC에 저장…")은 머지 때 문구만 살리면 안 되고 **`data-i18n` 속성을 빼야** 한다. 커맨드 레지스트리(`file.ts`) label도 `t()` 대신 리터럴 유지. 기본 로케일은 `ko`(`?lang=`·저장값 없으면 브라우저 언어 무시).
 - ⚠️ **에디터 빌드의 `tsc` 게이트는 죽어 있다.** `temp_editor/rhwp-studio`의 tsc가 **TypeScript 7(tsgo)** 인데 `const x: number = "boom"` 에도 출력 없이 exit 0을 낸다. `build`가 `tsc && vite build`라 타입체크가 있는 것처럼 보이지만 없다. **머지 잔재(import 없이 남은 참조)는 빌드를 그냥 통과하므로 검증은 `npm run smoke`(런타임)로 한다.** 0.8.6 머지 때 `disconnectSubsecondDevtools is not defined`로 WASM 초기화가 3회 전부 실패했는데 빌드는 통과했다 → 스모크에 치명적 콘솔 에러 게이트를 추가해 잡도록 했다.
 - ⚠️ **글자폭 배치는 0.7.18부터 WASM 내부 메트릭**이다(그 전 `0.7.3`은 호스트 콜백 `globalThis.measureTextWidth`에 위임). **`0.7.3`을 정답 기준으로 삼지 말 것** — 자동번호 여백을 흘려 한글 대비 좁다(upstream #4701에서 확인).
 - ✅ **#4701(가운뎃점 `·` advance +4.1%, 목차 줄 끝 21px 밀림)은 0.8.6에서 교정됐다** — `haansoft_latin_override` 제거. 우리 쪽 실측으로 `·→·` 구간 폭이 `0.3329` → **`0.3200` em**(문서 목표치)으로 내려온 걸 확인했다. 이제 라틴 폭은 폰트 자신의 hmtx를 쓴다. 배치 측정 시 `x[i+1]-x[i]`는 공백·자동번호 여백을 포함하므로 여전히 **advance로 읽지 말 것.** 경위는 `docs/rhwp-0.8-regression.md`.

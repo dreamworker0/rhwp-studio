@@ -10,12 +10,15 @@
  *                           refresh_token을 Firestore에 사용자별 저장,
  *                           불투명 세션 ID를 HttpOnly 쿠키로 발급
  *   3) /api/drive-token   → 세션 쿠키 → refresh_token으로 단기 액세스 토큰 발급/반환
- *   4) /api/auth/logout   → 세션/리프레시 토큰 폐기
+ *   4) /api/auth/logout   → 이 브라우저의 세션만 폐기(POST). refresh_token 은 다른 기기
+ *                           세션이 쓰므로 남긴다 — 대신 90일 미사용 시 TTL 로 자동 삭제되고,
+ *                           Google 이 폐기(invalid_grant)하면 즉시 지운다.
  *
  * 보안 원칙:
  *   - client_secret, refresh_token 은 절대 클라이언트로 나가지 않는다.
  *   - 브라우저에는 (a) 불투명 HttpOnly 세션 쿠키, (b) 단기 액세스 토큰만 노출.
  *   - Firestore 는 Admin SDK 로만 접근(규칙상 클라이언트 접근 전면 차단).
+ *   - OAuth state 는 로그인을 시작한 브라우저에 묶는다(쿠키 nonce) — 로그인 CSRF 방지.
  */
 
 const { onRequest } = require('firebase-functions/v2/https');
@@ -60,6 +63,31 @@ const SCOPES = [
 const SESSION_COOKIE = '__session';
 const SESSION_MAX_AGE = 60 * 60 * 24 * 60; // 60일
 const STATE_TTL_MS = 10 * 60 * 1000; // OAuth state 유효 10분
+// refresh_token 미사용 보관 기한. 세션(60일)보다 길어 활동 중인 사용자는 잃지 않는다.
+const USER_IDLE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+const USER_TTL_REFRESH_MS = 24 * 60 * 60 * 1000; // expireAt 연장은 하루 한 번만(쓰기 절약)
+
+// ─── __session 쿠키 값 형식 ─────────────────────────────────────────────
+// Hosting 은 __session 하나만 전달하므로 세션 ID 와 로그인 nonce 를 한 값에 담는다.
+//   "<sid 48hex>"                 로그인 상태
+//   "<sid 48hex>.<n1>.<n2>"       로그인 진행 중(기존 세션 유지)
+//   ".<n1>"                       로그인 진행 중(세션 없음)
+// nonce(32hex)는 로그인 시작 때 심고, callback 에서 state 문서의 해시와 대조한다.
+// 동시에 여러 탭에서 로그인을 시작해도 각자 통과하도록 최근 MAX_LOGIN_NONCES 개를 유지.
+const MAX_LOGIN_NONCES = 3;
+
+function readSessionCookie(req) {
+  const raw = parseCookies(req)[SESSION_COOKIE] || '';
+  const [sid, ...nonces] = raw.split('.');
+  return {
+    sid: isHexId(sid, 48) ? sid : null,
+    nonces: nonces.filter((n) => isHexId(n, 32)).slice(-MAX_LOGIN_NONCES),
+  };
+}
+
+function sha256Hex(s) {
+  return crypto.createHash('sha256').update(s).digest('hex');
+}
 
 // ─── 쿠키 유틸 ──────────────────────────────────────────────────────────
 function parseCookies(req) {
@@ -187,9 +215,20 @@ async function handleLogin(req, res) {
     consent = !(userDoc.exists && userDoc.data().refreshToken);
   }
 
-  // state(CSRF) + 복귀 경로를 Firestore 에 단기 저장.
-  // (Hosting 이 '__session' 외 쿠키를 제거하므로 state 를 쿠키로 못 쓴다.)
+  // 로그인 CSRF 방지: 이 브라우저에만 nonce 를 심고 state 문서엔 해시만 둔다.
+  // callback 에서 쿠키의 nonce 와 대조 → 남이 시작한 로그인의 콜백 링크를 열어도 거부.
+  const nonce = crypto.randomBytes(16).toString('hex');
+  const cur = readSessionCookie(req);
+  const nonces = [...cur.nonces, nonce].slice(-MAX_LOGIN_NONCES);
+  // 기존 세션은 앞에 그대로 둔다 — 로그인을 중간에 그만둬도 로그아웃되지 않게.
+  setCookie(res, SESSION_COOKIE, `${cur.sid || ''}.${nonces.join('.')}`, {
+    maxAge: cur.sid ? SESSION_MAX_AGE : STATE_TTL_MS / 1000,
+  });
+
+  // state + 복귀 경로를 Firestore 에 단기 저장.
+  // (Hosting 이 '__session' 외 쿠키를 제거하므로 state 를 별도 쿠키로 못 쓴다.)
   await db.collection('oauthStates').doc(state).set({
+    nonceHash: sha256Hex(nonce),
     ret,
     // 동의를 강제한 요청 — callback 의 refresh_token 재요청 루프 방지용.
     prompted: force || consent,
@@ -237,6 +276,16 @@ async function handleCallback(req, res) {
     res.status(400).send('로그인 요청이 만료되었습니다. 다시 시도해 주세요.');
     return;
   }
+  // 이 브라우저가 시작한 로그인인지 확인(로그인 CSRF 방지). 코드 교환 전에 거른다.
+  const cookie = readSessionCookie(req);
+  const expected = typeof stateData.nonceHash === 'string' ? Buffer.from(stateData.nonceHash, 'hex') : null;
+  const matched = expected && expected.length === 32
+    ? cookie.nonces.find((n) => crypto.timingSafeEqual(Buffer.from(sha256Hex(n), 'hex'), expected))
+    : undefined;
+  if (!matched) {
+    res.status(400).send('로그인을 시작한 브라우저에서 다시 시도해 주세요.');
+    return;
+  }
   const ret = safeReturnPath(stateData.ret);
 
   const tokenRes = await exchangeToken({
@@ -265,6 +314,8 @@ async function handleCallback(req, res) {
       {
         refreshToken: tok.refresh_token,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        // 미사용 refresh_token 자동 정리(Firestore TTL 정책). /drive-token 사용 시 연장.
+        expireAt: admin.firestore.Timestamp.fromMillis(Date.now() + USER_IDLE_TTL_MS),
       },
       { merge: true },
     );
@@ -287,14 +338,17 @@ async function handleCallback(req, res) {
     // Firestore TTL 정책(expireAt)으로 만료 세션을 자동 정리(서버측 만료 검사와 동일 기준).
     expireAt: admin.firestore.Timestamp.fromMillis(Date.now() + SESSION_MAX_AGE * 1000),
   });
-  setCookie(res, SESSION_COOKIE, sid, { maxAge: SESSION_MAX_AGE });
+  // 쓴 nonce 만 빼고, 다른 탭에서 진행 중인 로그인의 nonce 는 남긴다.
+  const pending = cookie.nonces.filter((n) => n !== matched);
+  setCookie(res, SESSION_COOKIE, pending.length ? `${sid}.${pending.join('.')}` : sid, {
+    maxAge: SESSION_MAX_AGE,
+  });
   res.redirect(302, APP_ORIGIN + safeReturnPath(ret));
 }
 
 async function handleDriveToken(req, res) {
-  const cookies = parseCookies(req);
-  const sid = cookies[SESSION_COOKIE];
-  if (!isHexId(sid, 48)) {
+  const { sid } = readSessionCookie(req);
+  if (!sid) {
     res.status(401).json({ error: 'no_session' });
     return;
   }
@@ -311,7 +365,8 @@ async function handleDriveToken(req, res) {
     return;
   }
   const { sub } = sess.data();
-  const userDoc = await db.collection('driveUsers').doc(sub).get();
+  const userRef = db.collection('driveUsers').doc(sub);
+  const userDoc = await userRef.get();
   const refreshToken = userDoc.exists ? userDoc.data().refreshToken : null;
   if (!refreshToken) {
     res.status(401).json({ error: 'no_refresh_token' });
@@ -325,10 +380,28 @@ async function handleDriveToken(req, res) {
     grant_type: 'refresh_token',
   });
   if (!r.ok) {
-    // refresh_token 폐기/만료 → 재로그인 필요
-    console.warn('[drive-token] refresh 실패', await r.text());
+    const body = await r.text();
+    console.warn('[drive-token] refresh 실패', body);
+    // Google 이 토큰을 폐기/만료 처리(invalid_grant)했으면 더 쓸 수 없는 토큰을 보관하지 않는다.
+    // 일시 장애(5xx 등)에는 지우지 않는다 — 그 토큰은 아직 유효하다.
+    let grantError = null;
+    try { grantError = JSON.parse(body).error; } catch { /* 본문이 JSON 이 아님 */ }
+    if (grantError === 'invalid_grant') {
+      await userRef
+        .update({ refreshToken: admin.firestore.FieldValue.delete() })
+        .catch(() => {});
+      await sess.ref.delete().catch(() => {});
+    }
     res.status(401).json({ error: 'refresh_failed' });
     return;
+  }
+
+  // 미사용 보관 기한 연장(하루 한 번만 쓴다). 이 필드 도입 전 사용자도 여기서 채워진다.
+  const expireAtMs = userDoc.data().expireAt ? userDoc.data().expireAt.toMillis() : 0;
+  if (expireAtMs - Date.now() < USER_IDLE_TTL_MS - USER_TTL_REFRESH_MS) {
+    await userRef
+      .update({ expireAt: admin.firestore.Timestamp.fromMillis(Date.now() + USER_IDLE_TTL_MS) })
+      .catch((e) => console.warn('[drive-token] expireAt 연장 실패', e));
   }
   const tok = await r.json();
   res.set('Cache-Control', 'no-store');
@@ -336,9 +409,13 @@ async function handleDriveToken(req, res) {
 }
 
 async function handleLogout(req, res) {
-  const cookies = parseCookies(req);
-  const sid = cookies[SESSION_COOKIE];
-  if (isHexId(sid, 48)) {
+  // 링크·이미지 태그로 남을 강제 로그아웃시키지 못하게 POST 만 받는다.
+  if (req.method !== 'POST') {
+    res.set('Allow', 'POST').status(405).json({ error: 'method_not_allowed' });
+    return;
+  }
+  const { sid } = readSessionCookie(req);
+  if (sid) {
     await db.collection('driveSessions').doc(sid).delete().catch(() => {});
   }
   setCookie(res, SESSION_COOKIE, '', { clear: true });

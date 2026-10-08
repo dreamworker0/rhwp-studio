@@ -97,6 +97,49 @@ function isHexId(s, len) {
   return typeof s === 'string' && s.length === len && /^[a-f0-9]+$/.test(s);
 }
 
+// ─── 호출 제한 ──────────────────────────────────────────────────────────
+// 비인증 엔드포인트(/auth/login 은 매 호출 Firestore 쓰기, /drive-token 은 읽기)를
+// 반복 호출해 요금을 키우는 것을 막는다. 고정 1분 창, 인스턴스 메모리 카운터.
+//   - IP별 한도: 일반 사용자는 탭당 몇 번 수준이라 넉넉하다.
+//   - 인스턴스 전체 한도: X-Forwarded-For 위조로 IP별 한도를 우회해도 막히는 상한.
+// 인스턴스마다 따로 세므로 실효 상한 = 한도 × maxInstances. 정확한 계량이 아니라 비용 상한용.
+const RATE_WINDOW_MS = 60 * 1000;
+const RATE_LIMITS = {
+  login: { perIp: 20, global: 300 },
+  token: { perIp: 60, global: 1200 },
+};
+let rateWindowStart = 0;
+let rateCounts = new Map();
+
+function clientIp(req) {
+  const xff = req.headers['x-forwarded-for'];
+  const first = typeof xff === 'string' ? xff.split(',')[0].trim() : '';
+  return first || req.ip || 'unknown';
+}
+
+/** 한도 초과면 429 를 보내고 false. */
+function allowRequest(req, res, kind) {
+  const now = Date.now();
+  if (now - rateWindowStart >= RATE_WINDOW_MS) {
+    rateWindowStart = now;
+    rateCounts = new Map(); // 창이 바뀌면 통째로 버려 메모리가 쌓이지 않게
+  }
+  const limit = RATE_LIMITS[kind];
+  const ipKey = `${kind}:${clientIp(req)}`;
+  const globalKey = `${kind}:*`;
+  const ipCount = (rateCounts.get(ipKey) || 0) + 1;
+  const globalCount = (rateCounts.get(globalKey) || 0) + 1;
+  rateCounts.set(ipKey, ipCount);
+  rateCounts.set(globalKey, globalCount);
+  if (ipCount <= limit.perIp && globalCount <= limit.global) return true;
+
+  const retryAfter = Math.max(1, Math.ceil((rateWindowStart + RATE_WINDOW_MS - now) / 1000));
+  res.set('Retry-After', String(retryAfter));
+  if (kind === 'token') res.status(429).json({ error: 'rate_limited' });
+  else res.status(429).send('요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.');
+  return false;
+}
+
 function decodeJwtSub(idToken) {
   try {
     const payload = JSON.parse(
@@ -305,14 +348,21 @@ async function handleLogout(req, res) {
 // ─── 라우터 ─────────────────────────────────────────────────────────────
 // Hosting rewrite(/api/**)로 들어오므로 req.path 는 "/api/..." 형태다.
 exports.api = onRequest(
-  { secrets: [GOOGLE_CLIENT_SECRET], region: 'asia-northeast3' },
+  {
+    secrets: [GOOGLE_CLIENT_SECRET],
+    region: 'asia-northeast3',
+    // 반복 호출로 인스턴스가 무한정 늘어 요금이 커지는 것을 막는 상한.
+    // 사용자 요청은 로그인·토큰 발급뿐이라 평시엔 1~2개로 충분하다.
+    maxInstances: 10,
+  },
   async (req, res) => {
     const path = req.path.replace(/^\/api/, '') || '/';
     try {
-      if (path === '/auth/login') return await handleLogin(req, res);
-      if (path === '/auth/callback') return await handleCallback(req, res);
-      if (path === '/drive-token') return await handleDriveToken(req, res);
-      if (path === '/auth/logout') return await handleLogout(req, res);
+      // login·callback 은 같은 한도를 공유(로그인 1회 = 2호출), Firestore 접근 전에 거른다.
+      if (path === '/auth/login') return allowRequest(req, res, 'login') && await handleLogin(req, res);
+      if (path === '/auth/callback') return allowRequest(req, res, 'login') && await handleCallback(req, res);
+      if (path === '/drive-token') return allowRequest(req, res, 'token') && await handleDriveToken(req, res);
+      if (path === '/auth/logout') return allowRequest(req, res, 'token') && await handleLogout(req, res);
       res.status(404).send('Not found');
     } catch (e) {
       console.error('[api] 처리 오류', e);

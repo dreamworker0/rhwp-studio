@@ -26,3 +26,6 @@ Thumbs.db
 
 # 진단 스크립트 작업 공간 (editor-render-compare 스크린샷, git archive 로 복원한 과거 빌드 등)
 .tmp/
+
+# 보안 점검 결과 (퍼블릭 레포 — 절대 커밋 금지)
+SECURITY_AUDIT_RESULT.md

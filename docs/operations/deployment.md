@@ -118,6 +118,22 @@ firebase hosting:clone rhwp-studio:<previous-version-id> rhwp-studio:live
 
 **Functions** — 원클릭 롤백이 없다. 직전 정상 커밋을 체크아웃해 `firebase deploy --only functions` 로 재배포한다. Hosting 만 롤백하면 백엔드는 그대로이므로, 프론트/백엔드 계약이 바뀐 배포를 되돌릴 때는 **양쪽을 함께** 되돌려야 한다.
 
+## 모니터링 알림
+
+2026-10 보안 점검 때 설정했다. 콘솔 설정이라 코드에는 없다 — 바꿀 때 여기도 고칠 것.
+
+| 알림 | 조건 | 의미 |
+|---|---|---|
+| 호출 제한(429) 급증 | `api` 429 응답 5분 합계 > 20 | 반복 호출 공격. 함수의 호출 제한이 막고 있다는 신호 |
+| 서버 오류(5xx) | `api` 5xx 5분 합계 > 5 | 로그인·문서 열기 장애. Sentry 와 함께 볼 것 |
+| 함수 인스턴스 상한 근접 | 인스턴스 ≥ 8 이 5분 지속 | `maxInstances: 10` 에 근접. 평시 1~2 |
+| 월 예산 (rhwp-studio 전용) | ₩10,000 의 50·90·100%, 예상 100% | 비용 이상 징후. 알림만 보내고 과금을 멈추지 않는다 |
+
+- 위치: Cloud Console → Monitoring → 알림(정책·이메일 채널), 결제 → 예산 및 알림.
+- 수신: 이메일 채널 1개 + (예산은) 결제 계정 관리자.
+- 결제 계정 전체 대상 ₩50,000 예산이 별도로 있다(다른 프로젝트 합산).
+- 지표는 Cloud Run 기본 지표(`run.googleapis.com/request_count`, `container/instance_count`, 서비스 `api`)라 로그 기반 지표가 필요 없다.
+
 ## firebase.json 핵심 설정
 
 ```json

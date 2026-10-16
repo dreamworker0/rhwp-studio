@@ -1,7 +1,7 @@
 import { getAccessToken, startLogin, clearTokenCache, NotAuthenticatedError } from '../lib/auth'
 import { getFileMeta, downloadFile, uploadFile } from '../lib/drive'
 import { renderEditorLayout, renderAuthPrompt, renderLoading, renderError } from '../components/ui'
-import { showViewerPermToast, showHwpxEditToastIfNeeded, setupSaveListener, loadFileDirectly } from '../lib/editor-utils'
+import { showViewerPermToast,setupSaveListener, loadFileDirectly } from '../lib/editor-utils'
 import { trackEvent } from '../lib/analytics'
 
 // 자동 로그인 리다이렉트 시도 횟수 가드(탭 단위, 탭 닫으면 소멸). 무한 루프 방지용.
@@ -269,9 +269,8 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
 
     const statusText = document.getElementById('save-status')
 
-    // 뷰어 모드 토스트 / HWPX 편집 안내 토스트(첫 편집 1회)
+    // 뷰어 모드 토스트
     if (!canEdit) showViewerPermToast()
-    else if (isHwpx) showHwpxEditToastIfNeeded()
 
     // @rhwp/editor 로딩
     const { createEditor } = await import('@rhwp/editor')

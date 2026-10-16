@@ -197,5 +197,5 @@ confirm("변경 사항을 저장하시겠습니까?")
 3. **`/api/**` rewrite 순서** — `firebase.json` 에서 SPA fallback(`**`)보다 앞에 있어야 한다.
 4. **함수는 CI 가 배포하지 않는다** — 수동 배포 필수. [deployment.md](./deployment.md)
 5. **Drive "Open with" 첫 계정선택 팝업은 제거 불가** — 앱은 `/drive/open?state=…` 로 실행만 된다.
-6. **HWPX 편집** — 지원하지만 재직렬화 시 구조는 보존해도 시각 충실도는 보장되지 않는다. 첫 편집 시 사본 편집을 권하는 안내 토스트가 1회 뜬다.
+6. **HWPX 편집** — 지원하지만 재직렬화 시 구조는 보존해도 시각 충실도는 보장되지 않는다. 예전엔 첫 편집 시 사본 편집을 권하는 안내 토스트를 띄웠으나 2026-10-16 제거했다.
 7. **호스트 앱은 WASM 을 직접 로드하지 않는다.** HWP 파싱·렌더링은 전부 에디터 iframe 안에서 일어난다. 미리보기도 뷰어 모드 iframe(`?mode=view`)이 담당한다. `@rhwp/core` 를 직접 로드하던 `hwp-renderer.ts` 와 그 전용 자산 `public/rhwp_bg.wasm` 은 미사용이라 제거했다. `@rhwp/core` 의존성은 남아 있는데, 이건 `scripts/rhwp-version-diff.mjs` 가 비교 기준(`node_modules/@rhwp/core`)으로 쓰기 때문이다.

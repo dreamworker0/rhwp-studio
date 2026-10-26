@@ -37,17 +37,13 @@ export async function renderDriveNew(app: HTMLElement) {
 
   app.innerHTML = `
     <div class="editor-layout">
-      <header class="editor-header-bar">
-        <button id="btn-back" class="btn btn-secondary">뒤로가기</button>
+      <header class="editor-header-bar" style="padding-left: 12px;">
         <span class="editor-title">새 문서 — rhwp Studio</span>
         <span id="save-status" style="font-size:14px; font-weight:bold; color:#4ade80; margin-left:15px;"></span>
       </header>
       <div id="editor-container" style="width: 100vw; height: calc(100vh - 50px);"></div>
     </div>
   `
-
-  const btnBack = document.getElementById('btn-back')
-  btnBack?.addEventListener('click', () => { history.back() })
 
   const container = document.getElementById('editor-container')
   if (!container) return

@@ -119,11 +119,16 @@ async function clearContentRestriction(fileId: string): Promise<void> {
   }
 }
 
+/**
+ * fileId 가 있으면 기존 파일 내용을 갱신하고, 없으면 새 파일을 만든다(반환값 = 파일 ID).
+ * parents 는 새로 만들 때만 쓰인다(Drive "새로 만들기"가 넘긴 폴더).
+ */
 export async function uploadFile(
   name: string,
   data: ArrayBuffer | Uint8Array,
   mimeType = 'application/x-hwp',
   fileId?: string,
+  parents?: string[],
 ): Promise<string> {
   // supportsAllDrives=true: 공유 드라이브 파일 포함, 일반 드라이브도 안정성↑
   const url = fileId
@@ -131,10 +136,11 @@ export async function uploadFile(
     : `${UPLOAD_API}/files?uploadType=multipart&supportsAllDrives=true`
 
   // buffer로부터 매번 새 FormData를 만든다(재시도 시 본문 재사용을 위해 함수로 분리).
-  const doUpload = async (): Promise<Response> => {
+  const doUpload = async (withParents = true): Promise<Response> => {
     const headers = await authHeaders()
     const form = new FormData()
-    form.append('metadata', new Blob([JSON.stringify({ name, mimeType })], { type: 'application/json' }))
+    const metadata = !fileId && withParents && parents?.length ? { name, mimeType, parents } : { name, mimeType }
+    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }))
     // Blob 은 ArrayBuffer/Uint8Array(byteOffset·byteLength 존중)를 그대로 받으므로 추가 복사 불필요.
     // (cast: lib 의 Uint8Array<ArrayBufferLike> 제네릭이 BlobPart 와 안 맞아서일 뿐, 런타임 안전)
     form.append('file', new Blob([data as BlobPart], { type: mimeType }), name)
@@ -146,6 +152,12 @@ export async function uploadFile(
   }
 
   let res = await doUpload()
+
+  // 새 파일인데 지정 폴더에 쓸 수 없는 경우(삭제·권한 없음): 내 드라이브 루트에 만든다.
+  if (!res.ok && !fileId && parents?.length && (res.status === 403 || res.status === 404)) {
+    console.warn('[drive] 지정 폴더에 만들 수 없어 내 드라이브에 저장합니다:', res.status, await res.text())
+    res = await doUpload(false)
+  }
 
   // 파일이 읽기 전용(내용 제한)으로 잠겨 있어 거부된 경우: 잠금 해제 후 1회 재시도
   if (!res.ok && res.status === 403 && fileId) {

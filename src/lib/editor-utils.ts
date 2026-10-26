@@ -13,14 +13,26 @@ export function showViewerPermToast(): void {
 }
 
 // ─── Drive 저장 메시지 리스너 (hwp 전용) ─────────────────────────────────
+/**
+ * fileId 가 없으면(새 문서) 첫 저장에서 parents 폴더에 파일을 만들고, 이후 저장은 그 파일을 갱신한다.
+ * 저장은 직렬화한다 — 생성 응답 전에 두 번째 저장이 오면 파일이 둘 생기기 때문.
+ */
 export function setupSaveListener(
   metaName: string,
   metaMimeType: string,
-  fileId: string,
+  fileId: string | undefined,
   statusText: HTMLElement | null,
-  onSaveSuccess?: () => void,
+  onSaveSuccess?: (fileId: string) => void,
+  parents?: string[],
 ): () => void {
-  const handler = async (e: MessageEvent) => {
+  let currentId = fileId
+  let queue: Promise<void> = Promise.resolve()
+
+  const handler = (e: MessageEvent) => {
+    queue = queue.then(() => handleSave(e))
+  }
+
+  const handleSave = async (e: MessageEvent) => {
     if (e.origin !== location.origin) return
 
     const msg = e.data
@@ -49,8 +61,8 @@ export function setupSaveListener(
     try {
       if (statusText) statusText.textContent = '저장 중...'
       console.log(`[DriveOpen] Google Drive 업로드: ${saveName} (${(fileBuffer as ArrayBuffer).byteLength ?? '?'} bytes)`)
-      await uploadFile(saveName, fileBuffer, saveMime, fileId)
-      onSaveSuccess?.()
+      currentId = await uploadFile(saveName, fileBuffer, saveMime, currentId, parents)
+      onSaveSuccess?.(currentId)
       if (statusText) {
         const now = new Date()
         const hh = now.getHours().toString().padStart(2, '0')

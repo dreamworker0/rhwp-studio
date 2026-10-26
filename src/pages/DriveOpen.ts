@@ -5,7 +5,7 @@ import { showViewerPermToast,setupSaveListener, loadFileDirectly } from '../lib/
 import { trackEvent } from '../lib/analytics'
 
 // 자동 로그인 리다이렉트 시도 횟수 가드(탭 단위, 탭 닫으면 소멸). 무한 루프 방지용.
-const AUTH_ATTEMPT_KEY = 'rhwp_auth_attempts'
+export const AUTH_ATTEMPT_KEY = 'rhwp_auth_attempts'
 const MAX_AUTO_ATTEMPTS = 2
 
 /**
@@ -15,7 +15,7 @@ const MAX_AUTO_ATTEMPTS = 2
  *   (refresh_token 미발급 등 복구).
  * - 그 이후(2회 모두 실패): 무한 루프 방지를 위해 수동 버튼으로만 폴백.
  */
-function attemptReauth(
+export function attemptReauth(
   app: HTMLElement,
   returnPath: string,
   opts: { loginHint?: string; force?: boolean },

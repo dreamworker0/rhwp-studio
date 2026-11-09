@@ -128,13 +128,16 @@ function isHexId(s, len) {
 // ─── 호출 제한 ──────────────────────────────────────────────────────────
 // 비인증 엔드포인트(/auth/login 은 매 호출 Firestore 쓰기, /drive-token 은 읽기)를
 // 반복 호출해 요금을 키우는 것을 막는다. 고정 1분 창, 인스턴스 메모리 카운터.
-//   - IP별 한도: 일반 사용자는 탭당 몇 번 수준이라 넉넉하다.
-//   - 인스턴스 전체 한도: X-Forwarded-For 위조로 IP별 한도를 우회해도 막히는 상한.
+//   - IP별 한도: 교육장·사무실은 수십 명이 공인 IP 하나(NAT)를 함께 쓴다.
+//     2026-11 교육에서 20여 명이 30초 안에 로그인하다 perIp 20(로그인+콜백 합산)에 걸렸다.
+//     → 50명이 1분 안에 동시에 들어와도 통과하게 잡고, 로그인·콜백은 따로 센다.
+//   - 인스턴스 전체 한도: X-Forwarded-For 위조로 IP별 한도를 우회해도 막히는 상한(비용 상한의 본체).
 // 인스턴스마다 따로 세므로 실효 상한 = 한도 × maxInstances. 정확한 계량이 아니라 비용 상한용.
 const RATE_WINDOW_MS = 60 * 1000;
 const RATE_LIMITS = {
-  login: { perIp: 20, global: 300 },
-  token: { perIp: 60, global: 1200 },
+  login: { perIp: 100, global: 300 },
+  callback: { perIp: 100, global: 300 },
+  token: { perIp: 300, global: 1200 },
 };
 let rateWindowStart = 0;
 let rateCounts = new Map();
@@ -163,9 +166,28 @@ function allowRequest(req, res, kind) {
 
   const retryAfter = Math.max(1, Math.ceil((rateWindowStart + RATE_WINDOW_MS - now) / 1000));
   res.set('Retry-After', String(retryAfter));
+  res.set('Cache-Control', 'no-store');
   if (kind === 'token') res.status(429).json({ error: 'rate_limited' });
-  else res.status(429).send('요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.');
+  else res.status(429).type('html').send(rateLimitedPage(retryAfter));
   return false;
+}
+
+// 로그인·콜백 429 는 사람이 보는 화면이다. 글자만 띄우면 새로고침을 연타해 429 가 더 쌓인다
+// (2026-11 교육 때 같은 URL 이 3초에 10번). 창이 풀린 뒤 같은 URL 을 자동으로 다시 연다.
+// 콜백도 한도에서 걸러져 code·state 를 아직 안 썼으므로 그대로 재시도해도 된다.
+// 몇 초 흩어 놓아 같은 교실 사람들이 한꺼번에 다시 몰리지 않게 한다. JS 없이 meta refresh 만 쓴다.
+function rateLimitedPage(retryAfter) {
+  const wait = retryAfter + crypto.randomInt(1, 6);
+  return `<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="${wait}">
+<title>잠시 후 다시 시도합니다</title>
+<style>body{font-family:system-ui,sans-serif;max-width:28rem;margin:20vh auto;padding:0 16px;color:#222;line-height:1.6}h1{font-size:1.2rem}p{color:#555}</style>
+</head><body>
+<h1>지금 로그인하는 분이 많습니다</h1>
+<p>${wait}초 뒤에 자동으로 다시 시도합니다. 새로고침하지 말고 이 화면에서 기다려 주세요.</p>
+</body></html>`;
 }
 
 function decodeJwtSub(idToken) {
@@ -435,9 +457,9 @@ exports.api = onRequest(
   async (req, res) => {
     const path = req.path.replace(/^\/api/, '') || '/';
     try {
-      // login·callback 은 같은 한도를 공유(로그인 1회 = 2호출), Firestore 접근 전에 거른다.
+      // login·callback 은 따로 센다(로그인 1회가 한도를 두 칸 쓰지 않게). Firestore 접근 전에 거른다.
       if (path === '/auth/login') return allowRequest(req, res, 'login') && await handleLogin(req, res);
-      if (path === '/auth/callback') return allowRequest(req, res, 'login') && await handleCallback(req, res);
+      if (path === '/auth/callback') return allowRequest(req, res, 'callback') && await handleCallback(req, res);
       if (path === '/drive-token') return allowRequest(req, res, 'token') && await handleDriveToken(req, res);
       if (path === '/auth/logout') return allowRequest(req, res, 'token') && await handleLogout(req, res);
       res.status(404).send('Not found');

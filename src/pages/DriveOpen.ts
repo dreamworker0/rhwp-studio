@@ -363,6 +363,20 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
     console.error(e)
     const msg = e instanceof Error ? e.message : String(e)
 
+    // 404 = 앱이 이 파일에 접근할 수 없음. drive.file 범위라 "연결 앱"으로 연 적 없는 파일을
+    // ?fileId= 로 직접 열면 Drive 가 403 이 아니라 404(notFound)로 답한다(삭제된 파일도 같음).
+    // 원문(파일 ID 포함) 대신 안내를 보인다. 401 검사보다 먼저 — 그 검사는 부분 문자열이라
+    // 메시지 속 파일 ID 에 "401"이 끼면 재로그인 루프로 잘못 빠진다.
+    if (/Drive API 오류 \(404\)/.test(msg)) {
+      trackEvent('document_open_error', { format: docFormat, reason: 'not_found' })
+      renderError(
+        app,
+        '이 파일을 열 수 없습니다',
+        'rhwp Studio에 이 파일을 열 권한이 없거나, 파일이 삭제되었습니다. Google Drive에서 파일을 오른쪽 클릭한 뒤 "연결 앱" → "rhwp Studio"로 열어 주세요.',
+      )
+      return
+    }
+
     // 401 권한 오류 시 토큰 캐시를 비우고 재로그인 유도(동의 강제로 refresh_token 재발급)
     if (msg.includes('401') || msg.includes('UNAUTHENTICATED') || msg.toLowerCase().includes('invalid credentials')) {
       trackEvent('document_open_error', { format: docFormat, reason: 'auth' })

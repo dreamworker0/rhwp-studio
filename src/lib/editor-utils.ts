@@ -24,6 +24,8 @@ export function setupSaveListener(
   statusText: HTMLElement | null,
   onSaveSuccess?: (fileId: string) => void,
   parents?: string[],
+  /** 지정하면 에디터가 보낸 파일명·MIME 대신 이 값으로 저장한다(PDF → 새 .hwpx). */
+  fixedTarget?: { name: string; mimeType: string },
 ): () => void {
   let currentId = fileId
   let queue: Promise<void> = Promise.resolve()
@@ -48,8 +50,8 @@ export function setupSaveListener(
       payload instanceof ArrayBuffer        ? payload        :
       null
 
-    const saveName: string = payload.filename || payload.name || metaName
-    const saveMime: string = payload.mimeType || metaMimeType || 'application/x-hwp'
+    const saveName: string = fixedTarget?.name || payload.filename || payload.name || metaName
+    const saveMime: string = fixedTarget?.mimeType || payload.mimeType || metaMimeType || 'application/x-hwp'
 
     if (!fileBuffer) {
       console.warn('[DriveOpen] 저장 메시지에 buffer가 없습니다:', payload)
@@ -92,9 +94,16 @@ export async function loadFileDirectly(
   data: ArrayBuffer,
   fileName: string,
   statusEl: HTMLElement | null,
+  opts: { awaitUserImport?: boolean } = {},
 ): Promise<void> {
-  const TIMEOUT_MS = 60_000
-  const MAX_RETRIES = 5
+  // awaitUserImport(PDF): 에디터가 "PDF 가져오기" 대화상자에서 사용자 선택을 기다리는 동안
+  // loadFile 응답이 오지 않는다. 그래서
+  //  - 제한 시간을 길게 둔다(60초 뒤 재전송하면 에디터가 진행 중인 가져오기를 취소한다).
+  //  - pageCount 폴백을 쓰지 않는다 — 에디터는 시작 때 빈 문서(1쪽)를 열어 두므로
+  //    대화상자가 떠 있는 동안에도 pageCount > 0 이 되어 "로드 완료"로 오인한다.
+  const awaitUserImport = opts.awaitUserImport === true
+  const TIMEOUT_MS = awaitUserImport ? 30 * 60_000 : 60_000
+  const MAX_RETRIES = awaitUserImport ? 1 : 5
   const RETRY_DELAY_MS = 2_000
   const POLL_DELAY_MS = 1_500     // loadFile 전송 후 첫 pageCount 폴링까지 대기
   const POLL_INTERVAL_MS = 2_000  // 이후 pageCount 폴링 주기
@@ -157,6 +166,8 @@ export async function loadFileDirectly(
           { type: 'rhwp-request', id: loadId, method: 'loadFile', params: { data: bytes, fileName } },
           location.origin,
         )
+
+        if (awaitUserImport) return
 
         // 폴백: loadFile 응답이 도달하지 않는 경우, pageCount로 로딩 완료를 직접 확인
         const sendPoll = () => {

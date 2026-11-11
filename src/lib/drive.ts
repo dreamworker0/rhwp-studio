@@ -12,6 +12,8 @@ export interface DriveFileMeta {
   mimeType: string
   size?: string
   capabilities?: { canEdit: boolean }
+  /** 상위 폴더 — PDF 를 가져와 새 .hwpx 를 같은 폴더에 만들 때 쓴다. */
+  parents?: string[]
 }
 
 async function authHeaders(): Promise<HeadersInit> {
@@ -29,7 +31,7 @@ async function ensureOk(res: Response, logLabel: string, errLabel: string): Prom
 
 export async function getFileMeta(fileId: string): Promise<DriveFileMeta> {
   const res = await fetch(
-    `${DRIVE_API}/files/${fileId}?fields=id,name,mimeType,size,capabilities&supportsAllDrives=true`,
+    `${DRIVE_API}/files/${fileId}?fields=id,name,mimeType,size,capabilities,parents&supportsAllDrives=true`,
     { headers: await authHeaders() },
   )
   await ensureOk(res, 'Drive API getFileMeta error:', 'Drive API 오류')

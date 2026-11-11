@@ -83,7 +83,7 @@ export async function renderDriveOpen(app: HTMLElement) {
 
 async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: string) {
   // GA 계측용(익명): 포맷·체류시간. 파일명/식별자는 절대 싣지 않는다.
-  let docFormat: 'hwp' | 'hwpx' | 'unknown' = 'unknown'
+  let docFormat: 'hwp' | 'hwpx' | 'pdf' | 'unknown' = 'unknown'
   let openedAt = 0
   renderLoading(app, 'Drive에서 파일을 불러오는 중...')
   // 스피너 DOM 재생성 없이 메시지/막대만 갱신(깜빡임 방지)
@@ -114,16 +114,34 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
     ])
 
     const ext = meta.name.split('.').pop()?.toLowerCase()
-    if (!['hwp', 'hwpx'].includes(ext ?? '')) {
-      renderError(app, '지원하지 않는 파일 형식', `${meta.name}은(는) HWP/HWPX 파일이 아닙니다.`)
+    if (!['hwp', 'hwpx', 'pdf'].includes(ext ?? '')) {
+      renderError(app, '지원하지 않는 파일 형식', `${meta.name}은(는) HWP/HWPX/PDF 파일이 아닙니다.`)
       return
     }
 
     // HWPX도 편집 가능 (에디터 엔진의 HWPX 직렬화 정식화 이후). 뷰어 권한만 미리보기.
     const isHwpx = ext === 'hwpx'
-    docFormat = isHwpx ? 'hwpx' : 'hwp'
+    const isPdf = ext === 'pdf'
+    docFormat = isPdf ? 'pdf' : isHwpx ? 'hwpx' : 'hwp'
     const canEdit = meta.capabilities?.canEdit ?? true
-    const viewOnly = !canEdit
+    // PDF 는 에디터가 HWP 문서로 "가져오고", 저장은 원본을 건드리지 않고 같은 폴더에
+    // 새 .hwpx 를 만든다(첫 저장 때 생성, 이후 그 파일 갱신). 그래서 원본 PDF 의 편집
+    // 권한과 무관하게 편집 모드로 연다.
+    const viewOnly = isPdf ? false : !canEdit
+    const pdfTarget = isPdf
+      ? { name: meta.name.replace(/\.pdf$/i, '') + '.hwpx', mimeType: 'application/hwp+zip' }
+      : undefined
+    let pdfSavedId: string | undefined
+    const onPdfSaved = (id: string) => {
+      if (!pdfTarget || pdfSavedId) return
+      pdfSavedId = id
+      // 새로고침하면 원본 PDF 대신 저장된 .hwpx 가 열리도록 주소를 바꾼다.
+      const openState = JSON.stringify({ ids: [id], action: 'open', ...(loginHint ? { userId: loginHint } : {}) })
+      history.replaceState(null, '', `/drive/open?state=${encodeURIComponent(openState)}`)
+      document.title = `${pdfTarget.name} — rhwp Studio`
+      const nameEl = document.querySelector('.editor-filename')
+      if (nameEl) nameEl.textContent = pdfTarget.name
+    }
     renderLoading(app, viewOnly ? '미리보기를 준비하는 중...' : '에디터를 준비하는 중...')
     document.title = `${meta.name} — rhwp Studio${viewOnly ? ' (미리보기)' : ''}`
 
@@ -147,7 +165,9 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
       }
 
       // HWP 파일: 저장 확인 다이얼로그
-      const result = confirm('변경 사항을 Google Drive에 저장하시겠습니까?')
+      const result = confirm(pdfTarget
+        ? `변경 사항을 Google Drive에 "${pdfTarget.name}"(으)로 저장하시겠습니까?\n원본 PDF는 그대로 둡니다.`
+        : '변경 사항을 Google Drive에 저장하시겠습니까?')
       if (result) {
         // iframe에서 현재 문서 바이너리를 요청
         const iframe = document.querySelector('#editor-container iframe') as HTMLIFrameElement | null
@@ -163,7 +183,7 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
         try {
           // 에디터 0.8.0부터 커스텀 exportFile RPC 대신 upstream exportHwp/exportHwpx 로
           // 현재 문서 바이너리를 pull 한다(출처 포맷 기준). 응답 result 는 number[].
-          const isHwpxDoc = docFormat === 'hwpx'
+          const isHwpxDoc = docFormat === 'hwpx' || docFormat === 'pdf'
           const exportMethod = isHwpxDoc ? 'exportHwpx' : 'exportHwp'
           const exportMime = isHwpxDoc ? 'application/hwp+zip' : 'application/x-hwp'
           const exportedArray = await new Promise<number[]>((resolve, reject) => {
@@ -196,12 +216,17 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
 
           // number[] → Uint8Array 변환 후 업로드
           const fileBytes = new Uint8Array(exportedArray)
-          await uploadFile(
-            meta.name,
-            fileBytes,
-            meta.mimeType || exportMime,
-            fileId,
-          )
+          if (pdfTarget) {
+            // 원본 PDF 는 건드리지 않는다 — 이미 만든 .hwpx 가 있으면 갱신, 없으면 같은 폴더에 생성.
+            onPdfSaved(await uploadFile(pdfTarget.name, fileBytes, pdfTarget.mimeType, pdfSavedId, meta.parents))
+          } else {
+            await uploadFile(
+              meta.name,
+              fileBytes,
+              meta.mimeType || exportMime,
+              fileId,
+            )
+          }
 
           if (statusText) statusText.textContent = '✔ 저장 완료'
           console.log('[DriveOpen] 닫기 전 저장 완료')
@@ -270,7 +295,7 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
     const statusText = document.getElementById('save-status')
 
     // 뷰어 모드 토스트
-    if (!canEdit) showViewerPermToast()
+    if (viewOnly) showViewerPermToast()
 
     // @rhwp/editor 로딩
     const { createEditor } = await import('@rhwp/editor')
@@ -278,7 +303,7 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
 
     // [cache-bust] /editor/index.html 이 CDN 엣지에 옛 버전으로 고착될 수 있어(max-age 잔재)
     // 버전 쿼리로 새 캐시 키를 강제한다. 배포 시 EDITOR_CACHE_TAG 만 올리면 됨.
-    const EDITOR_CACHE_TAG = 'v20260813'
+    const EDITOR_CACHE_TAG = 'v20261111'
     const studioUrl = viewOnly
       ? `/editor/index.html?mode=view&${EDITOR_CACHE_TAG}`
       : `/editor/index.html?${EDITOR_CACHE_TAG}`
@@ -296,7 +321,16 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
       window.addEventListener('message', dirtyHandler)
 
       // 저장 성공 시 dirty 해제
-      setupSaveListener(meta.name, meta.mimeType, fileId, statusText, () => { isDirty = false })
+      // PDF: 원본 fileId 대신 "아직 없음"으로 시작 → 첫 저장에서 같은 폴더에 새 .hwpx 생성.
+      setupSaveListener(
+        meta.name,
+        meta.mimeType,
+        pdfTarget ? undefined : fileId,
+        statusText,
+        (id) => { isDirty = false; onPdfSaved(id) },
+        pdfTarget ? meta.parents : undefined,
+        pdfTarget,
+      )
 
       // 탭 닫기(X) 시 저장 경고 — 일부 브라우저는 returnValue 설정이 있어야 경고가 뜬다.
       const beforeUnloadHandler = (e: BeforeUnloadEvent) => {
@@ -310,12 +344,16 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
 
     // 버퍼 데이터를 에디터에 주입
     const iframe = editor.element as HTMLIFrameElement
+    // PDF 는 에디터가 "PDF 가져오기" 대화상자(쪽·배치 선택, 진행률)를 띄운다. 로딩 오버레이가
+    // 에디터를 불투명하게 덮고 있으므로 먼저 걷어 대화상자가 보이게 한다.
+    if (isPdf) document.getElementById('editor-loading')?.remove()
     try {
-      await loadFileDirectly(iframe, data, meta.name, statusText)
+      await loadFileDirectly(iframe, data, meta.name, statusText, { awaitUserImport: isPdf })
     } finally {
       // 문서 로드가 끝나면(성공/실패 모두) 에디터 영역 로딩 오버레이 제거
       document.getElementById('editor-loading')?.remove()
     }
+    if (pdfTarget && statusText) statusText.textContent = `저장하면 새 파일 ${pdfTarget.name} 로 만듭니다`
 
     // 여기 도달 = 로드 성공(실패 시 위에서 throw). 익명 이벤트로 열기 성공 기록.
     openedAt = Date.now()
@@ -331,6 +369,13 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
       clearTokenCache()
       app.innerHTML = ''
       attemptReauth(app, location.pathname + location.search, { loginHint, force: true })
+      return
+    }
+
+    // PDF 가져오기 대화상자에서 취소 — 오류가 아니라 사용자 선택이다.
+    if (msg.includes('PDF_IMPORT_CANCELLED') || msg.includes('문서 열기가 취소')) {
+      trackEvent('document_open_error', { format: docFormat, reason: 'cancelled' })
+      renderError(app, 'PDF 가져오기를 취소했습니다', '원본 PDF는 바뀌지 않았습니다. 다시 하려면 Drive에서 다시 열어 주세요.')
       return
     }
 

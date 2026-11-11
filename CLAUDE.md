@@ -14,6 +14,7 @@
 - authorization code + refresh token. refresh_token/client_secret은 클라 비노출. 세션 = HttpOnly `__session` 쿠키(60일) + 메모리 액세스 토큰.
 - ⚠️ **Firebase Hosting은 `__session` 이름의 쿠키만 함수로 전달** — 다른 쿠키 이름은 못 씀.
 - Drive "Open with" 첫 Google 계정선택 팝업은 제거 불가(앱은 `/drive/open?state=…` URL로 실행만 됨).
+- "연결 앱"에 뜨는 파일 형식은 **저장소가 아니라 콘솔에만 있다**(Google Cloud → Google Drive API → Drive UI 통합): 기본 MIME `application/x-hwp`·`application/vnd.hancom.hwp`·`application/vnd.hancom.hwpx` + 확장자 `hwp`·`hwpx`, **보조** MIME `application/pdf` + 확장자 `pdf`(2026-11-11). PDF는 에디터가 HWPX로 가져오고, 저장은 원본을 건드리지 않고 같은 폴더에 새 `.hwpx`를 만든다(`DriveOpen.ts`의 `pdfTarget`). 콘솔 변경은 Drive 반영까지 시간이 걸린다. `drive.file` 범위라 앱으로 연 적 없는 파일을 `?fileId=`로 직접 열면 404가 정상이다.
 
 ## 빌드 / 배포
 - 빌드: `npm run build` (tsc + vite). **테스트/린트 스크립트 없음 → 빌드로 검증.**

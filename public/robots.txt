@@ -1,0 +1,6 @@
+User-agent: *
+Disallow: /api/
+Disallow: /drive/
+Disallow: /editor/
+
+Sitemap: https://rhwp-studio.web.app/sitemap.xml

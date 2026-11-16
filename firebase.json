@@ -14,6 +14,12 @@
       "**/node_modules/**",
       "**/*.map"
     ],
+    "redirects": [
+      { "source": "/index.html", "destination": "/", "type": 301 },
+      { "source": "/privacy.html", "destination": "/privacy", "type": 301 },
+      { "source": "/terms.html", "destination": "/terms", "type": 301 },
+      { "source": "/support.html", "destination": "/support", "type": 301 }
+    ],
     "rewrites": [
       {
         "source": "/api/**",

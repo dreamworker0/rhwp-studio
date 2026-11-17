@@ -427,7 +427,10 @@ async function handleDriveToken(req, res) {
   }
   const tok = await r.json();
   res.set('Cache-Control', 'no-store');
-  res.json({ access_token: tok.access_token, expires_in: tok.expires_in });
+  // sub: 세션 계정. 클라가 Drive state.userId(파일을 연 계정)와 대조해 계정이 다르면
+  // 그 계정으로 다시 로그인시킨다(다른 계정 토큰으로 열면 drive.file 범위라 404).
+  // 쿠키 주인에게만 가는 본인 계정 ID 라 노출 문제 없음.
+  res.json({ access_token: tok.access_token, expires_in: tok.expires_in, sub });
 }
 
 async function handleLogout(req, res) {

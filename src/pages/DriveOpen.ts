@@ -1,4 +1,4 @@
-import { getAccessToken, startLogin, clearTokenCache, NotAuthenticatedError } from '../lib/auth'
+import { getAccessToken, getSessionSub, startLogin, clearTokenCache, NotAuthenticatedError } from '../lib/auth'
 import { getFileMeta, downloadFile, uploadFile } from '../lib/drive'
 import { renderEditorLayout, renderAuthPrompt, renderLoading, renderError } from '../components/ui'
 import { showViewerPermToast,setupSaveListener, loadFileDirectly } from '../lib/editor-utils'
@@ -34,6 +34,27 @@ export function attemptReauth(
   startLogin(returnPath, { loginHint: opts.loginHint, force })
 }
 
+/**
+ * 세션 계정이 Drive 가 알려준 계정(state.userId)과 다르면 그 계정으로 다시 로그인시킨다.
+ * 세션은 브라우저당 한 계정이라, 계정 A 로 로그인해 둔 채 계정 B 의 Drive 에서 "연결 앱"으로
+ * 열면 A 의 토큰으로 요청하게 된다 → drive.file 범위라 B 가 받은 파일 권한이 A 엔 없어 404.
+ * true = 로그인으로 이동 중(호출자는 중단). 자동 전환을 다 써도 계정이 안 맞으면(사용자가 다른
+ * 계정을 고름) false 로 현재 계정으로 진행한다 — 파일이 그 계정에서도 열릴 수 있고, 아니면 404 안내.
+ * 호출자는 이 검사 뒤에만 AUTH_ATTEMPT_KEY 를 지울 것(먼저 지우면 무한 리다이렉트).
+ */
+export function switchAccountIfMismatch(app: HTMLElement, returnPath: string, loginHint?: string): boolean {
+  const sub = getSessionSub()
+  if (!loginHint || !sub || sub === loginHint) return false
+  const attempts = Number(sessionStorage.getItem(AUTH_ATTEMPT_KEY) || '0')
+  if (attempts >= MAX_AUTO_ATTEMPTS) return false
+  clearTokenCache()
+  attemptReauth(app, returnPath, { loginHint, force: false })
+  return true
+}
+
+// 404 보조 재시도 가드: 서버가 sub 를 안 줘 계정 대조를 못 했을 때 파일당 1회만 재로그인.
+const NOT_FOUND_RETRY_KEY = 'rhwp_404_retry'
+
 export async function renderDriveOpen(app: HTMLElement) {
   const params = new URLSearchParams(location.search)
 
@@ -67,6 +88,8 @@ export async function renderDriveOpen(app: HTMLElement) {
   renderLoading(app, '인증 확인 중...')
   try {
     await getAccessToken()
+    // 다른 계정의 세션이면 파일을 연 계정으로 전환(가드 해제보다 먼저).
+    if (switchAccountIfMismatch(app, returnPath, loginHint)) return
     // 세션 유효 → 이전 자동 리다이렉트 가드 해제(다음 만료 시 깨끗한 시도 보장)
     sessionStorage.removeItem(AUTH_ATTEMPT_KEY)
     await openFileFromDrive(app, fileId, loginHint)
@@ -357,6 +380,7 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
 
     // 여기 도달 = 로드 성공(실패 시 위에서 throw). 익명 이벤트로 열기 성공 기록.
     openedAt = Date.now()
+    sessionStorage.removeItem(NOT_FOUND_RETRY_KEY)
     trackEvent('document_open', { format: docFormat, view_only: viewOnly })
 
   } catch (e: unknown) {
@@ -368,6 +392,16 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
     // 원문(파일 ID 포함) 대신 안내를 보인다. 401 검사보다 먼저 — 그 검사는 부분 문자열이라
     // 메시지 속 파일 ID 에 "401"이 끼면 재로그인 루프로 잘못 빠진다.
     if (/Drive API 오류 \(404\)/.test(msg)) {
+      // 옛 함수(응답에 sub 없음)라 계정 대조를 못 했으면, 계정 불일치일 수 있으니
+      // Drive 가 알려준 계정으로 파일당 1회만 다시 로그인해 본다.
+      if (loginHint && !getSessionSub() && sessionStorage.getItem(NOT_FOUND_RETRY_KEY) !== fileId) {
+        sessionStorage.setItem(NOT_FOUND_RETRY_KEY, fileId)
+        clearTokenCache()
+        app.innerHTML = ''
+        attemptReauth(app, location.pathname + location.search, { loginHint, force: false })
+        return
+      }
+      sessionStorage.removeItem(NOT_FOUND_RETRY_KEY)
       trackEvent('document_open_error', { format: docFormat, reason: 'not_found' })
       renderError(
         app,

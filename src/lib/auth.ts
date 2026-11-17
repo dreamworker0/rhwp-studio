@@ -15,7 +15,7 @@ export class NotAuthenticatedError extends Error {
   }
 }
 
-let cached: { token: string; expiresAt: number } | null = null
+let cached: { token: string; expiresAt: number; sub?: string } | null = null
 
 /**
  * 백엔드에서 단기 액세스 토큰을 받아온다(만료 1분 전까지 메모리 캐시 재사용).
@@ -32,12 +32,21 @@ export async function getAccessToken(): Promise<string> {
   if (!res.ok) {
     throw new Error(`토큰 발급 실패 (${res.status})`)
   }
-  const { access_token, expires_in } = await res.json()
+  const { access_token, expires_in, sub } = await res.json()
   cached = {
     token: access_token,
     expiresAt: Date.now() + Math.max((Number(expires_in) - 60) * 1000, 30_000),
+    sub: typeof sub === 'string' && sub ? sub : undefined,
   }
   return access_token
+}
+
+/**
+ * 현재 세션 계정의 Google 계정 ID(OAuth sub). getAccessToken() 이후에만 값이 있다.
+ * 서버가 sub 를 안 주는 옛 함수 버전이면 undefined.
+ */
+export function getSessionSub(): string | undefined {
+  return cached?.sub
 }
 
 /** 메모리 토큰 캐시를 비운다(예: Drive 401 응답 후 강제 재발급용). */

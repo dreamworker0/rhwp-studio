@@ -1,7 +1,7 @@
 import { escapeHtml, renderError, renderLoading } from '../components/ui'
 import { getAccessToken, NotAuthenticatedError } from '../lib/auth'
 import { setupSaveListener } from '../lib/editor-utils'
-import { attemptReauth, AUTH_ATTEMPT_KEY } from './DriveOpen'
+import { attemptReauth, AUTH_ATTEMPT_KEY, switchAccountIfMismatch } from './DriveOpen'
 
 // 에디터가 새 문서에 붙이는 이름. 첫 저장 전 메시지에 파일명이 없을 때의 기본값.
 const NEW_DOC_NAME = '새 문서.hwp'
@@ -33,6 +33,8 @@ export async function renderDriveNew(app: HTMLElement) {
     }
     return
   }
+  // 다른 계정의 세션이면 "새로 만들기"를 누른 계정으로 전환(그 계정의 폴더에 저장해야 하므로).
+  if (switchAccountIfMismatch(app, location.pathname + location.search, loginHint)) return
   sessionStorage.removeItem(AUTH_ATTEMPT_KEY)
 
   app.innerHTML = `

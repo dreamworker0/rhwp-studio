@@ -26,10 +26,14 @@ rhwp-studio는 한글과컴퓨터의 HWP/HWPX 문서를 **별도의 프로그램
 | 항목 | 값 |
 |------|-----|
 | 프로젝트명 | rhwp-studio |
-| 현재 버전 | 0.7.3 |
+| 앱(셸) 버전 | 0.1.0 |
+| 에디터/코어 엔진 | `@rhwp/editor`·`@rhwp/core` 0.7.x |
 | 프로덕션 URL | https://rhwp-studio.web.app |
 | 에디터 URL | https://rhwp-studio.web.app/editor/ |
 | 호스팅 | Firebase Hosting |
+| 백엔드 | Firebase Functions 2세대 (리전 `asia-northeast3`) |
+| 저장소 | Firestore (세션/리프레시 토큰/OAuth state) |
+| 에러 추적 | Sentry (프론트 `@sentry/browser`, 함수 `@sentry/node`) |
 | Firebase 프로젝트 | `rhwp-studio` |
 
 ---
@@ -39,40 +43,74 @@ rhwp-studio는 한글과컴퓨터의 HWP/HWPX 문서를 **별도의 프로그램
 ### 2.1 전체 기술 구조
 
 ```
-┌──────────────────────────────────────────────────┐
-│                   브라우저                          │
-│  ┌────────────┐  ┌───────────┐  ┌──────────────┐ │
-│  │ TypeScript │  │   WASM    │  │  Google API  │ │
-│  │  (Vite 8)  │←→│ (Rust→WA) │  │  (Drive v3)  │ │
-│  │            │  │           │  │  (GIS OAuth)  │ │
-│  │  UI/UX     │  │  HWP 파서 │  │              │ │
-│  │  커맨드     │  │  렌더러   │  │              │ │
-│  │  이벤트     │  │  편집기   │  │              │ │
-│  └────────────┘  └───────────┘  └──────────────┘ │
-└──────────────────────────────────────────────────┘
-                        │
-                        ▼
-              Firebase Hosting (CDN)
+┌──────────────────────────── 브라우저 ────────────────────────────┐
+│  Studio 앱 셸 (Vite + TypeScript)                                  │
+│   라우팅 · 서버 인증(auth.ts) · Drive API(drive.ts) · UI/로딩      │
+│        │ iframe 임베드(postMessage)        │ @sentry/browser       │
+│        ▼                                   ▼ (에러 추적)           │
+│  ┌──────────────────────────┐                                     │
+│  │ 에디터 (public/editor)     │  WASM(Rust→WA): HWP 파싱/조판/렌더/편집 │
+│  └──────────────────────────┘                                     │
+└───────────┬───────────────────────────────────┬─────────────────┘
+            │ /api/**                            │ Google Drive API v3
+            ▼                                    ▼ (drive.file)
+   Firebase Functions (2세대)              Google Drive
+   서버 OAuth(code + refresh token)              ▲
+   @sentry/node · Firestore · Secret Manager     │
+            │                                     │
+            ▼                                     │
+   Firebase Hosting (CDN) ── /api/** rewrite ─────┘
 ```
 
 ### 2.2 기술 스택 상세
 
 | 계층 | 기술 | 역할 |
 |------|------|------|
-| **빌드 도구** | Vite 8 | 개발 서버, 번들링, HMR |
-| **언어** | TypeScript 6 | 프론트엔드 전체 |
-| **핵심 엔진** | Rust → WebAssembly | HWP 파싱, 조판, 렌더링 |
-| **인증** | Google Identity Services | OAuth 2.0 Implicit Flow |
+| **빌드 도구** | Vite 5 | 앱 셸 개발 서버, 번들링, HMR |
+| **언어** | TypeScript 5 (strict) | 프론트엔드 + 함수 |
+| **핵심 엔진** | Rust → WebAssembly (`@rhwp/core`) | HWP 파싱, 조판, 렌더링 |
+| **에디터 임베드** | `@rhwp/editor` (iframe) | 앱 셸이 iframe + postMessage로 제어 |
+| **백엔드** | Firebase Functions 2세대 (`asia-northeast3`) | 서버 OAuth, 단일 `api` 함수가 `/api/**` 라우팅 |
+| **인증** | 서버 기반 OAuth 2.0 (authorization code + refresh token) | refresh_token/client_secret 클라 비노출, 세션 쿠키 |
+| **세션/저장소** | Firestore + HttpOnly `__session` 쿠키 | 세션·refresh token·OAuth state |
+| **시크릿** | Secret Manager (`GOOGLE_CLIENT_SECRET`) | client_secret 보관 |
 | **스토리지** | Google Drive API v3 | 파일 읽기/쓰기/메타데이터 |
-| **배포** | Firebase Hosting | 정적 파일 서빙, CDN, HTTPS |
+| **에러 추적** | Sentry (`@sentry/browser`, `@sentry/node`) | 프론트·함수 에러, PII 미수집 |
+| **배포** | Firebase Hosting + Functions | 정적 파일 + 서버 함수, CDN, HTTPS |
 | **폰트** | Pretendard (WOFF2) | 기본 UI/문서 렌더링 폰트 |
-| **E2E 테스트** | Puppeteer Core | CDP 기반 자동화 테스트 |
+| **E2E 테스트** | Puppeteer Core (에디터) | CDP 기반 자동화 테스트 |
 
 ---
 
 ## 3. 시스템 아키텍처
 
 ### 3.1 디렉토리 구조
+
+rhwp-studio는 **두 계층**으로 구성된다: ① **Studio 앱(셸)** = `src/`(Vite+TS) + `functions/`(서버 OAuth), `dist/`로 빌드·배포. ② **에디터** = `temp_editor`에서 빌드되어 `public/editor/`에 산출물로 들어가고, 앱 셸이 iframe으로 임베드한다.
+
+**저장소 최상위 (Studio 앱)**
+
+```
+d:\apps\rhwp\
+├── src\                  ← 앱 셸 (Vite + TS, dist/로 빌드)
+│   ├── main.ts           ← 경로 기반 라우팅 진입점
+│   ├── pages\            ← Home / DriveOpen / DriveNew / Terms / Privacy / Support
+│   ├── lib\              ← auth.ts(서버 인증) · drive.ts(Drive API) · sentry.ts
+│   │                       · editor-utils.ts · hwp-renderer.ts
+│   ├── components\ui.ts  ← 공통 UI (로딩 스피너 / 오버레이 / 에러)
+│   └── style.css
+├── functions\            ← Firebase Functions 2세대 (서버 OAuth, asia-northeast3)
+│   ├── index.js          ← 단일 api 함수: /api/auth/login·callback, /api/drive-token, /api/auth/logout
+│   └── .env              ← SENTRY_DSN (커밋 제외)
+├── public\editor\        ← 임베드 에디터 산출물 (iframe 로드, 직접 수정 금지)
+├── dist\                 ← 앱 빌드 출력 (Hosting 배포 대상)
+├── .claude\              ← Claude Code 하네스 (CLAUDE.md, /deploy·/editor-update, 시크릿 훅)
+├── firebase.json · firestore.rules · .firebaserc
+├── .env (VITE_*, SENTRY_*)   ← 커밋 제외
+└── temp_editor\          ← 에디터 소스 (별도 git repo, npm run upstream:update로 public/editor 재생성)
+```
+
+**에디터 내부 구조 (`temp_editor/rhwp-studio/`)**
 
 ```
 d:\apps\rhwp\
@@ -239,13 +277,14 @@ main.ts (진입점)
 
 | 기능 | 설명 |
 |------|------|
-| Drive에서 열기 | URL 파라미터(`?fileId=XXX`)로 Drive 파일 직접 로드 |
-| Drive에 저장 | 기존 파일 덮어쓰기 (PATCH) |
-| 자동 저장 | 5분 간격, 변경 감지 기반, 오프라인 시 스킵 |
+| Drive에서 열기 | Drive UI 통합 실행: `/drive/open?state={"ids":["…"],"action":"open","userId":"…"}` (자체 링크는 `?fileId=…`도 지원) |
+| Drive에 저장 | 기존 파일 덮어쓰기 (PATCH). 읽기 전용(contentRestriction) 잠금 시 해제 후 1회 재시도 |
 | 새 파일 업로드 | 다른 이름으로 저장 시 새 파일 생성 (POST) |
-| OAuth 인증 | Google Identity Services 팝업 로그인 |
-| 토큰 자동 갱신 | 만료 5분 전 선제 갱신 |
-| Workspace 연동 | Marketplace 확장 앱 등록 및 "연결 앱(Open with)" 통합 설계 완료 |
+| 다운로드 진행률 | 스트리밍으로 다운로드하며 진행률(%/MB) 막대 표시 |
+| 인증 (서버 OAuth) | authorization code + refresh token. 세션 없으면 **중간 버튼 없이 자동 로그인 이동** |
+| 무음 재로그인 | 세션 쿠키만 만료된 경우 `prompt` 미지정 + `login_hint`로 팝업 없이 복귀 |
+| 토큰 발급/캐시 | `/api/drive-token`에서 단기 액세스 토큰 발급, 만료 1분 전까지 메모리 캐시 |
+| Workspace 연동 | Marketplace "연결 앱(Open with)" 통합. 첫 Google 계정선택 팝업은 Drive 측이라 제거 불가 |
 
 ### 4.3 렌더링 엔진
 
@@ -277,32 +316,33 @@ main.ts (진입점)
 ### 5.1 문서 열기 흐름 (Google Drive)
 
 ```
-[사용자] ──→ URL 접속 (?fileId=XXX)
-              │
+[사용자] ──→ Drive에서 .hwp 더블클릭
+              │ Google이 앱 실행: /drive/open?state={ids,action,userId}
               ▼
-        ┌─ initialize() ─┐
-        │  웹폰트 로드     │ ← loading-overlay 표시
-        │  WASM 초기화     │ ← 실패 시 최대 2회 재시도
-        └────────┬────────┘
-                 ▼
-        ┌─ loadDriveFile() ─┐
-        │  ensureAuth()      │ ← OAuth 토큰 확인/발급
-        │  getFileMeta()     │ ← 파일 이름/크기 조회
-        │  downloadFile()    │ ← 바이너리 다운로드
-        └────────┬──────────┘
-                 ▼
-        ┌─ wasm.loadFromBuffer() ─┐
-        │  HWP/HWPX 파싱          │ ← WASM 엔진
-        │  조판(레이아웃) 계산      │
-        │  페이지 생성              │
-        └────────┬────────────────┘
-                 ▼
-        ┌─ initializeDocument() ──┐
-        │  canvas-view 초기화       │
-        │  input-handler 바인딩     │
-        │  toolbar 상태 갱신         │
-        │  startAutoSave() 시작     │
-        └──────────────────────────┘
+        [앱 셸 — DriveOpen.ts]
+        ┌─ state 파싱 ─┐
+        │  fileId 추출  │  userId → login_hint 후보
+        └──────┬───────┘
+               ▼
+        ┌─ getAccessToken() (/api/drive-token) ─┐
+        │  세션 쿠키 유효 → 단기 토큰 발급        │
+        │  401(세션 없음) → 자동 로그인 이동      │ ← 중간 버튼 없음, sessionStorage 루프가드
+        └──────┬────────────────────────────────┘
+               ▼
+        ┌─ 병렬 다운로드 ─┐
+        │  getFileMeta()  │ ← 이름/크기/권한
+        │  downloadFile() │ ← 스트리밍(진행률 %/MB)
+        └──────┬──────────┘
+               ▼
+        ┌─ createEditor() (iframe @rhwp/editor) ─┐
+        │  editor-loading 오버레이 표시            │
+        │  WASM ready 대기                         │
+        └──────┬──────────────────────────────────┘
+               ▼
+        ┌─ loadFileDirectly() ─┐
+        │  바이트 postMessage   │ → 에디터가 파싱/조판/렌더
+        │  완료 시 오버레이 제거 │
+        └───────────────────────┘
 ```
 
 ### 5.2 문서 저장 흐름
@@ -322,9 +362,9 @@ main.ts (진입점)
               │                 (네이티브 파일 다운로드 이벤트와 충돌 방지 처리 완료)
               예 (Drive 연동)
               ▼
-        ┌─ ensureAuth() ───────┐
-        │  토큰 유효? → 사용     │
-        │  만료 임박? → 재발급   │
+        ┌─ getAccessToken() ───┐
+        │  /api/drive-token     │ ← 세션 쿠키 → 단기 토큰
+        │  401 → 자동 재로그인   │
         └────────┬─────────────┘
                  ▼
         ┌─ wasm.exportHwp() ───┐
@@ -372,43 +412,54 @@ Drive 파일 로드 ──→ startAutoSave()
 
 ## 6. 인증 및 보안
 
-### 6.1 OAuth 2.0 구성
+### 6.1 OAuth 2.0 구성 (서버 기반)
 
 | 항목 | 값 |
 |------|-----|
-| 인증 방식 | Google Identity Services (Implicit Flow) |
-| Client ID | `292079787292-qmjcruc73ogvoffnf63f28nj7ov30csn` |
-| Scope | `https://www.googleapis.com/auth/drive.file` (열린 파일만) + `https://www.googleapis.com/auth/drive.install` (Drive "연결 앱" 통합) |
-| 토큰 타입 | Access Token (Bearer) |
-| 유효 기간 | 1시간 (3600초) |
-| 저장 위치 | `sessionStorage` |
+| 인증 방식 | **서버 기반 OAuth 2.0 — authorization code + refresh token** (이전 GIS Implicit Flow에서 전환) |
+| Client ID | `292079787292-qmjcruc73ogvoffnf63f28nj7ov30csn` (공개값) |
+| client_secret | **Secret Manager `GOOGLE_CLIENT_SECRET`** — 클라이언트 비노출 |
+| Scope | `openid`, `email`, `drive.file`(열린 파일만), `drive.install`(Drive "연결 앱") |
+| 엔드포인트 | `/api/auth/login` · `/api/auth/callback` · `/api/drive-token` · `/api/auth/logout` (Functions) |
+| 세션 | HttpOnly `__session` 쿠키 (최대 60일) + 메모리 단기 액세스 토큰 |
+| 저장소 | Firestore: `driveUsers/{sub}`(refreshToken), `driveSessions/{sid}`, `oauthStates` |
 
-### 6.2 토큰 관리
+> ⚠️ **Firebase Hosting 제약**: `__session` 이름의 쿠키만 함수로 전달됨 → 세션 쿠키 이름은 반드시 `__session`. OAuth state는 쿠키 대신 Firestore `oauthStates`에 단기 저장(CSRF 방어).
+
+### 6.2 인증/토큰 흐름
 
 ```
-토큰 라이프사이클:
-
-[발급] → sessionStorage 저장 (rhwp_drive_token + rhwp_drive_token_expiry)
-  │
-  │ 55분 경과 (=만료 5분 전)
-  │
-  ▼
-[자동 갱신] → isTokenExpiringSoon() → ensureAuth() → 새 토큰 발급
-  │
-  │ 401/403 수신 시
-  │
-  ▼
-[강제 재발급] → clearToken() → ensureAuth() → fetchWithRetry
+[로그인] /api/auth/login
+   state(CSRF) → Firestore 저장 후 Google 동의 화면으로 리다이렉트
+   login_hint=userId(계정선택 건너뛰기) · prompt 미지정(무음 가능) · force=1(동의 강제)
+        │
+        ▼
+[콜백] /api/auth/callback
+   code → access/refresh token 교환, refresh_token을 driveUsers/{sub}에 저장(merge)
+   불투명 세션 ID 발급 → HttpOnly __session 쿠키(60일)
+        │
+        ▼
+[토큰 발급] /api/drive-token
+   __session → refresh_token → 단기 access_token (클라는 메모리 캐시, 만료 1분 전까지 재사용)
+        │ 401 (no_session / refresh_failed)
+        ▼
+[복구] 자동 로그인 이동(루프가드 1회) → 실패 시 수동 버튼(force=동의 강제로 refresh_token 재발급)
 ```
+
+자동 로그인 루프 방지: `sessionStorage` 플래그 `rhwp_auth_redirect_attempted`로 파일 열기 시도당 자동 리다이렉트 최대 1회, 그래도 세션이 무효면 수동 버튼으로 폴백.
 
 ### 6.3 보안 고려사항
 
-| 항목 | 현재 상태 | 향후 개선 |
-|------|-----------|-----------|
-| 토큰 저장 | sessionStorage (탭 수준) | Secure Cookie 또는 Service Worker |
-| XSS 방어 | DOM 직접 조작 (innerHTML 미사용) | CSP 헤더 강화 |
-| CORS | firebase.json 헤더 설정 | Origin 검증 추가 |
-| COEP/COOP | 활성화 (WASM 필수) | 유지 |
+| 항목 | 현재 상태 |
+|------|-----------|
+| client_secret / refresh_token | 서버(Secret Manager / Firestore)에만 존재, 클라 비노출 |
+| 세션 토큰 | HttpOnly `__session` 쿠키(JS 접근 불가) + 단기 액세스 토큰은 메모리만 |
+| Firestore 접근 | Admin SDK 전용 (규칙상 클라 접근 전면 차단) |
+| login_hint 위조 | 신원은 callback의 검증된 id_token `sub`로만 결정 → 힌트 위조 무해 |
+| 에러 추적 PII | Sentry `sendDefaultPii:false` + OAuth code/state/token URL 스크러빙(쿠키/토큰 미전송) |
+| XSS 방어 | 사용자 텍스트 `escapeHtml` 처리 |
+| COEP/COOP | 활성화 (WASM 필수) |
+| 시크릿 커밋 | `.env*` gitignore + Claude Code 커밋 차단 훅(`.claude/hooks/secret-scan.mjs`) |
 
 ---
 
@@ -418,9 +469,13 @@ Drive 파일 로드 ──→ startAutoSave()
 
 ```json
 {
+  "functions": { "source": "functions", "runtime": "nodejs22" },
+  "firestore": { "rules": "firestore.rules" },
   "hosting": {
     "public": "dist",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**", "**/*.map"],
     "rewrites": [
+      { "source": "/api/**", "function": "api" },
       { "source": "/editor/**", "destination": "/editor/index.html" },
       { "source": "**", "destination": "/index.html" }
     ],
@@ -431,6 +486,9 @@ Drive 파일 로드 ──→ startAutoSave()
   }
 }
 ```
+
+- `/api/**` → Functions의 단일 `api` 함수(서버 OAuth). 나머지는 SPA로 `/index.html` 폴백.
+- `**/*.map`을 ignore → 소스맵(Sentry 업로드용)은 배포본에 노출되지 않음.
 
 ### 7.2 빌드 파이프라인
 
@@ -457,14 +515,19 @@ vite build (번들링)
 ### 7.3 배포 명령
 
 ```bash
-# 빌드
-cd d:\apps\rhwp\temp_editor\rhwp-studio
-npm run build               # tsc → vite build → dist/editor/
-
-# 배포
+# 빌드 (앱 셸)
 cd d:\apps\rhwp
-firebase deploy --only hosting   # → https://rhwp-studio.web.app
+npm run build                          # tsc → vite build → dist/
+
+# 배포 (라이브 프로덕션 — 매번 명시 확인 후 실행)
+firebase deploy --only hosting,functions   # → https://rhwp-studio.web.app
 ```
+
+- ⚠️ **함수는 CI가 배포하지 않음** (`.github/workflows/deploy.yml`는 `--only hosting`). **함수 변경 시 수동 배포 필수.**
+- CI는 서비스계정 인증이 간헐 실패(`Premature close`)하므로, 빨가면 로컬 수동 배포로 대체.
+- 절차는 Claude Code 슬래시 커맨드 `/deploy`에 정리됨. 에디터 재생성은 `/editor-update`.
+
+> **에디터 빌드는 별도**: `public/editor/`는 `temp_editor`(별도 git repo, custom 브랜치)에서 `npm run upstream:update`로만 재생성한다. 직접 수정 금지.
 
 ---
 
@@ -530,14 +593,19 @@ node e2e/scenario-runner.mjs
 | `[offline-banner]` | offline-banner.ts | 네트워크 상태 변경 |
 | `[global]` | main.ts | 전역 에러/미처리 Promise |
 | `[loadDriveFile]` | main.ts | Drive 파일 로드 과정 |
+| `[DriveOpen]` | 앱 셸 DriveOpen.ts | 파일 열기/저장/로드 |
+| `[api]` | functions/index.js | 서버 OAuth 처리 오류 |
+| `[drive-token]` | functions/index.js | refresh 실패 등 |
+| `[sentry]` | sentry.ts / 함수 | 소스맵 업로드 경고 등 |
 
 ### 9.2 에러 핸들링 매트릭스
 
 | 에러 유형 | 자동 처리 | 사용자 알림 | 복구 방법 |
 |-----------|-----------|-------------|-----------|
 | WASM 초기화 실패 | 2회 재시도 | 토스트 + 새로고침 버튼 | 새로고침 |
-| OAuth 토큰 만료 | 5분 전 갱신 | (자동, 무알림) | 자동 |
-| API 401/403 | 토큰 재발급 + 재시도 | 실패 시 로그인 안내 | 재로그인 |
+| 세션/토큰 만료 | 자동 로그인 이동(무음 가능, 루프가드 1회) | (자동) | 자동 재로그인 |
+| refresh_token 폐기 | 동의 강제 재로그인(force) | 수동 버튼 안내 | 새 토큰 발급 |
+| API 401/403 | 토큰 캐시 비움 + 재인증 | 실패 시 로그인 안내 | 재로그인 |
 | API 5xx | 2초 후 1회 재시도 | 실패 시 토스트 | 재시도 |
 | Drive 저장 실패 | — | confirm + fallback | 로컬 다운로드 |
 | 네트워크 끊김 | — | 오프라인 배너 | 연결 복구 대기 |
@@ -552,6 +620,17 @@ node e2e/scenario-runner.mjs
 | `#sb-auto-save` | 마지막 자동 저장 시각 |
 | `#sb-zoom-val` | 현재 줌 배율 (%) |
 
+### 9.4 Sentry 에러 추적
+
+| 항목 | 내용 |
+|------|------|
+| Org | `socialprism` |
+| 프론트 프로젝트 | `rhwp-studio` (`@sentry/browser`, DSN = 루트 `.env` `VITE_SENTRY_DSN`) |
+| 함수 프로젝트 | `rhwp-studio-functions` (`@sentry/node`, DSN = `functions/.env` `SENTRY_DSN`) |
+| 수집 정책 | 에러만(`tracesSampleRate:0`), `sendDefaultPii:false`, OAuth `code/state/token` URL 스크러빙 |
+| 소스맵 | Vite 빌드 시 업로드(루트 `.env`의 `SENTRY_AUTH_TOKEN`/`SENTRY_ORG`/`SENTRY_PROJECT` 있을 때만, 실패해도 빌드 안 막힘). `.map`은 배포 제외 |
+| 함수 캡처 | 예기치 못한 500 오류만 캡처 + `Sentry.flush()` (쿠키/헤더 미첨부) |
+
 ---
 
 ## 10. 알려진 제약 사항 및 향후 계획
@@ -560,15 +639,18 @@ node e2e/scenario-runner.mjs
 
 | 항목 | 설명 | 관련 이슈 |
 |------|------|-----------|
-| HWPX 저장 | 베타 단계 — 저장 비활성화 | #197 (완전 변환기) |
-| WASM 파일 동기화 | `public/`과 `pkg/` 수동 동기화 필요 | — |
-| 토큰 보안 | sessionStorage 의존 (XSS 취약) | — |
+| HWPX 저장 | 베타 단계 — 저장 비활성화(미리보기만) | #197 (완전 변환기) |
+| 엔드투엔드 테스트 | 서버 로그인+UX 개선 배포 후 실제 Drive 열기 e2e 미완 | — |
+| 함수 수동 배포 | CI는 hosting만 → 함수 변경 시 수동 배포 필요 | — |
+| 첫 계정선택 팝업 | Drive "Open with"의 Google 계정선택 팝업은 제거 불가 | — |
 | 대용량 문서 | 100MB 이상 HWP 처리 시 메모리 부족 가능 | — |
 
 ### 10.2 향후 개선 계획
 
 | 우선순위 | 항목 | 설명 |
 |----------|------|------|
+| 완료 | 서버 기반 로그인 | authorization code + refresh token, 세션 60일, 로그인 UX 개선(자동/무음) — 배포됨 |
+| 완료 | Sentry 에러 추적 | 프론트 + 함수 연동·배포됨 |
 | 높음 | HWPX 완전 저장 | #197 변환기 완료 후 활성화 |
 | 완료/심사중 | Google Workspace Marketplace | 에셋/정보 등록 완료 및 리뷰 제출 상태 |
 | 중간 | 오프라인 모드 | Service Worker + IndexedDB 로컬 캐시 |
@@ -605,4 +687,4 @@ node e2e/scenario-runner.mjs
 
 ---
 
-*최종 업데이트: 2026-04-21 (v0.7.3)*
+*최종 업데이트: 2026-06-26 (앱 셸 v0.1.0 · 에디터 엔진 @rhwp 0.7.x)*

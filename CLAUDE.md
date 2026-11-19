@@ -24,7 +24,7 @@
 
 ## 에디터 서브모듈 (날카로운 모서리)
 - `public/editor/`는 **직접 수정 금지**. `temp_editor/`(별도 git repo, custom 브랜치)에서 재생성. 절차는 `/editor-update`.
-- 버전: `@rhwp/core`는 `0.9.0`, **`@rhwp/editor`는 `0.7.18` 고정**(0.8.x·0.9.0 lib의 MessagePort 연결이 레거시 `rhwp-request` 경로를 죽여 `loadFileDirectly`가 깨짐).
+- 버전: `@rhwp/core`는 `0.9.1`, **`@rhwp/editor`는 `0.7.18` 고정**(0.8.x·0.9.x lib의 MessagePort 연결이 레거시 `rhwp-request` 경로를 죽여 `loadFileDirectly`가 깨짐).
 - ⚠️ **0.9.0부터 글꼴 안내 모달이 `initializeDocument` 맨 앞에서 `await`** 된다(조판 전에 글꼴 선택 확정). 임베디드에서 이걸 기다리면 부모의 `loadFile` ack가 막히므로 custom 브랜치는 임베디드일 때 초기화 뒤 비동기로 띄우고, 새 감지 시 `local-fonts-changed`를 emit해 뷰를 갱신한다. 머지 때 이 분기를 지킬 것.
 - ⚠️ `vite.config.ts`의 `build` 블록은 **하나만** 둔다 — 0.9.0 upstream이 별도 `build`를 추가해 키가 중복되면 뒤쪽이 이겨 `outDir: public/editor`가 사라진다.
 - `npm run upstream:update`는 **`git merge main`** 으로 갱신한다(2026-10 rebase에서 전환). 이 브랜치의 관행이 머지이기 때문이다(0.7.18·0.8.2·0.8.4·0.8.6·0.8.7 전부 `git merge`). rebase는 2026-04 최초 커스텀 커밋부터 다시 재생해 그간의 재조정을 전부 버린다 — 0.8.6 때 rebase는 첫 커밋에서만 14헝크(+남은 5커밋), 머지는 **7파일 1헝크씩**이었다. 충돌 시 스크립트가 멈추면 해결 → `git commit` → **같은 명령 재실행**(이미 병합됐으면 머지를 건너뛰고 빌드부터 이어감). `temp_editor`는 다른 Windows 계정 소유라 git이 dubious ownership으로 거부하므로 스크립트가 `-c safe.directory`로 호출한다(전역 설정 불변).

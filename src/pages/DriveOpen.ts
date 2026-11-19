@@ -326,7 +326,7 @@ async function openFileFromDrive(app: HTMLElement, fileId: string, loginHint?: s
 
     // [cache-bust] /editor/index.html 이 CDN 엣지에 옛 버전으로 고착될 수 있어(max-age 잔재)
     // 버전 쿼리로 새 캐시 키를 강제한다. 배포 시 EDITOR_CACHE_TAG 만 올리면 됨.
-    const EDITOR_CACHE_TAG = 'v20261111'
+    const EDITOR_CACHE_TAG = 'v20261119'
     const studioUrl = viewOnly
       ? `/editor/index.html?mode=view&${EDITOR_CACHE_TAG}`
       : `/editor/index.html?${EDITOR_CACHE_TAG}`
